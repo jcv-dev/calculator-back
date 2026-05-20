@@ -41,6 +41,8 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=get_session_secret(),
     max_age=86400,
+    same_site="none",
+    https_only=True,
 )
 
 app.include_router(admin_router)
