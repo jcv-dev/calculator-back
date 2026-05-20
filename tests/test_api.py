@@ -44,7 +44,9 @@ class TestHealthEndpoint:
         with TestClient(app) as client:
             resp = client.get("/api/health")
         assert resp.status_code == 200
-        assert resp.json() == {"status": "ok"}
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert "cache" in data
 
 
 class TestGeocodeEndpoint:

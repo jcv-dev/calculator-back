@@ -6,7 +6,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 if not DATABASE_URL:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    DATABASE_URL = f"sqlite:///{os.path.join(BASE_DIR, 'fares.db')}"
+    DATABASE_URL = f"sqlite:///{os.path.join(BASE_DIR, 'database.db')}"
 
 _engine_kwargs = {}
 if DATABASE_URL.startswith("sqlite"):

@@ -7,6 +7,21 @@ DEFAULT_CONFIG = {
     "METODO_NEQUI_SURCHARGE": (500, "Handling fee for Nequi logistics"),
     "RAIN_SURCHARGE": (1000, "Dynamic fee auto-applied if OpenWeather API detects rain"),
     "WAIT_FEE": (3000, "Surcharge for wait times over 15 min (applied per each 15 min)"),
+    "TIER_1_LIMIT": (1.0, "Upper bound of tier 1 (km); distances ≤ this get flat BASE_FARE"),
+    "TIER_1_RATE": (0, "Per-km COP rate within tier 1 (0 = flat-fee zone)"),
+    "TIER_2_LIMIT": (1.5, "Upper bound of tier 2 (km)"),
+    "TIER_2_RATE": (150, "Per-km COP rate within tier 2"),
+    "TIER_3_LIMIT": (3.0, "Upper bound of tier 3 (km)"),
+    "TIER_3_RATE": (350, "Per-km COP rate within tier 3"),
+    "TIER_4_LIMIT": (3.5, "Upper bound of tier 4 (km)"),
+    "TIER_4_RATE": (500, "Per-km COP rate within tier 4"),
+    "TIER_5_LIMIT": (4.0, "Upper bound of tier 5 (km)"),
+    "TIER_5_RATE": (550, "Per-km COP rate within tier 5"),
+    "TIER_6_LIMIT": (4.5, "Upper bound of tier 6 (km)"),
+    "TIER_6_RATE": (700, "Per-km COP rate within tier 6"),
+    "TIER_7_LIMIT": (5.0, "Upper bound of tier 7 (km)"),
+    "TIER_7_RATE": (750, "Per-km COP rate within tier 7"),
+    "FINAL_RATE": (950, "Per-km COP rate for distance beyond the last tier limit"),
 }
 
 DEFAULT_FIXED_PRICES = [
@@ -40,7 +55,7 @@ DEFAULT_FIXED_PRICES = [
     {
         "service_type": "purchases",
         "destination_keyword": None,
-        "price": 8000,
+        "price": 7000,
         "description": "Tarifa base para servicio de compras",
     },
     {
@@ -56,7 +71,7 @@ DEFAULT_TOOLS = [
         "key": "canasta",
         "label": "Canasta",
         "description": "Pedidos pesados o voluminosos",
-        "surcharge": 1000,
+        "surcharge": 0,
         "material_symbol": "shopping_basket",
         "active": True,
     },
@@ -64,7 +79,7 @@ DEFAULT_TOOLS = [
         "key": "maletin",
         "label": "Maletín",
         "description": "Bolso térmico para entregas",
-        "surcharge": 500,
+        "surcharge": 0,
         "material_symbol": "work",
         "active": True,
     },
