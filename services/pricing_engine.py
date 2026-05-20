@@ -5,20 +5,42 @@ def config_to_dict(config_rows: list[FareConfig]) -> dict[str, float]:
     return {row.key: row.value for row in config_rows}
 
 
-def calculate_distance_cost(total_km: float, config: dict[str, float]) -> int:
-    base_fare = int(config.get("BASE_FARE", 3500))
+def _collect_tiers(config: dict[str, float]) -> list[tuple[float, float]]:
+    tiers = []
+    i = 1
+    while True:
+        limit = config.get(f"TIER_{i}_LIMIT")
+        rate = config.get(f"TIER_{i}_RATE")
+        if limit is None or rate is None:
+            break
+        tiers.append((limit, rate))
+        i += 1
+    tiers.sort(key=lambda t: t[0])
+    return tiers
 
-    if total_km <= 1.0:
+
+def calculate_distance_cost(total_km: float, config: dict[str, float]) -> int:
+    base_fare = int(config.get("BASE_FARE", 4000))
+    tiers = _collect_tiers(config)
+    final_rate = config.get("FINAL_RATE", 500)
+
+    if not tiers:
         return base_fare
 
     cost = float(base_fare)
+    prev = 0.0
 
-    if total_km <= 3.0:
-        cost += (total_km - 1.0) * 1000
-    elif total_km <= 5.0:
-        cost += 2.0 * 1000 + (total_km - 3.0) * 800
+    for limit_km, rate in tiers:
+        if total_km <= prev:
+            break
+        if total_km <= limit_km:
+            cost += (total_km - prev) * rate
+            break
+        cost += max(0, limit_km - prev) * rate
+        prev = limit_km
     else:
-        cost += 2.0 * 1000 + 2.0 * 800 + (total_km - 5.0) * 700
+        if total_km > prev:
+            cost += (total_km - prev) * final_rate
 
     return int(cost / 100 + 0.5) * 100
 
@@ -97,6 +119,13 @@ async def calculate_full_price(
         rain_surcharge = surcharge
         total += surcharge
 
+    # Wait fee — applied for service types that involve waiting at destination
+    wait_surcharge = 0
+    wait_types = {"tramites", "purchases"}
+    if any(s.get("service_type") in wait_types for s in segments):
+        wait_surcharge = int(cfg.get("WAIT_FEE", 3000))
+        total += wait_surcharge
+
     # Per-segment breakdown
     distance_segments = [s for s in segments if s.get("has_coords")]
     non_distance_segments = [s for s in segments if not s.get("has_coords")]
@@ -145,6 +174,7 @@ async def calculate_full_price(
         "tools": active_tools,
         "payment_surcharge": payment_surcharge,
         "rain_surcharge": rain_surcharge,
+        "wait_surcharge": wait_surcharge,
         "acompanante": acompanante,
         "segments": segment_details,
         "total": 0,

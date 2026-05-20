@@ -1,4 +1,5 @@
 import os
+import logging
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +9,7 @@ from dotenv import load_dotenv
 from database import init_db, get_session
 from seed import seed_config
 from models import FareConfig, FixedPrice, Tool  # noqa: ensure all models imported for create_all
+from services.cache import cache_stats
 from routes.admin import router as admin_router
 from routes.pricing import router as pricing_router
 from routes.geocode import router as geocode_router
@@ -16,6 +18,12 @@ from routes.tools import router as tools_router
 from auth import get_session_secret
 
 load_dotenv()
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger("domii")
 
 app = FastAPI(title="Domii Tuluá Fare Calculator")
 
@@ -54,7 +62,7 @@ def startup():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "cache": cache_stats()}
 
 
 if __name__ == "__main__":

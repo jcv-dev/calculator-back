@@ -70,10 +70,7 @@ async def search_address(
         return []
 
     result = [
-        {
-            "display_name": item.get("description", ""),
-            "place_id": item.get("place_id", ""),
-        }
+        {"display_name": item.get("description", ""), "place_id": item.get("place_id", "")}
         for item in data.get("predictions", [])[:5]
     ]
     cache_set("places_search", result, q.strip())
@@ -114,3 +111,34 @@ async def place_details(
     }
     cache_set("places_details", result, place_id)
     return result
+
+
+@router.get("/reverse")
+async def reverse_geocode(
+    lat: float = Query(...),
+    lng: float = Query(...),
+):
+    if not GOOGLE_MAPS_KEY:
+        raise HTTPException(503, "Google Maps API key not configured")
+
+    GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+    params = {
+        "latlng": f"{lat},{lng}",
+        "language": "es",
+        "key": GOOGLE_MAPS_KEY,
+    }
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(GEOCODE_URL, params=params, timeout=10.0)
+        data = resp.json()
+
+    if data.get("status") != "OK" or not data.get("results"):
+        return {"display_name": f"{lat:.4f}, {lng:.4f}", "lat": lat, "lng": lng}
+
+    result_data = data["results"][0]
+    loc = result_data["geometry"]["location"]
+    return {
+        "display_name": result_data.get("formatted_address", f"{lat:.4f}, {lng:.4f}"),
+        "lat": loc["lat"],
+        "lng": loc["lng"],
+    }
