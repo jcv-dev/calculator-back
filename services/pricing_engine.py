@@ -6,7 +6,7 @@ def config_to_dict(config_rows: list[FareConfig]) -> dict[str, float]:
 
 
 def calculate_distance_cost(total_km: float, config: dict[str, float]) -> int:
-    base_fare = int(config.get("BASE_FARE", 3500))
+    base_fare = int(config.get("BASE_FARE", 4000))
 
     if total_km <= 1.0:
         return base_fare
@@ -14,11 +14,11 @@ def calculate_distance_cost(total_km: float, config: dict[str, float]) -> int:
     cost = float(base_fare)
 
     if total_km <= 3.0:
-        cost += (total_km - 1.0) * 1000
+        cost += (total_km - 1.0) * 200
     elif total_km <= 5.0:
-        cost += 2.0 * 1000 + (total_km - 3.0) * 800
+        cost += 2.0 * 200 + (total_km - 3.0) * 300
     else:
-        cost += 2.0 * 1000 + 2.0 * 800 + (total_km - 5.0) * 700
+        cost += 2.0 * 200 + 2.0 * 300 + (total_km - 5.0) * 500
 
     return int(cost / 100 + 0.5) * 100
 

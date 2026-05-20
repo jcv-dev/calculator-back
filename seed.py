@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from models import FareConfig, FixedPrice, Tool
 
 DEFAULT_CONFIG = {
-    "BASE_FARE": (3500, "Minimum fare up to 1.0 km"),
+    "BASE_FARE": (4000, "Minimum fare up to 1.0 km"),
     "EXTRA_STOP_FEE": (1500, "Applied to every stop beyond the first delivery destination"),
     "METODO_NEQUI_SURCHARGE": (500, "Handling fee for Nequi logistics"),
     "RAIN_SURCHARGE": (1000, "Dynamic fee auto-applied if OpenWeather API detects rain"),
