@@ -22,6 +22,7 @@ DEFAULT_CONFIG = {
     "TIER_7_LIMIT": (5.0, "Upper bound of tier 7 (km)"),
     "TIER_7_RATE": (750, "Per-km COP rate within tier 7"),
     "FINAL_RATE": (950, "Per-km COP rate for distance beyond the last tier limit"),
+    "ACOMPANANTE_MULTIPLIER": (1.0, "Multiplier applied when acompañante is enabled (1.0 = no extra cost)"),
 }
 
 DEFAULT_FIXED_PRICES = [

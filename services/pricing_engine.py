@@ -119,12 +119,8 @@ async def calculate_full_price(
         rain_surcharge = surcharge
         total += surcharge
 
-    # Wait fee — applied for service types that involve waiting at destination
-    wait_surcharge = 0
-    wait_types = {"tramites", "purchases"}
-    if any(s.get("service_type") in wait_types for s in segments):
-        wait_surcharge = int(cfg.get("WAIT_FEE", 3000))
-        total += wait_surcharge
+    # Wait fee — not applied automatically, just reported for informational warnings
+    wait_fee_rate = int(cfg.get("WAIT_FEE", 3000))
 
     # Per-segment breakdown
     distance_segments = [s for s in segments if s.get("has_coords")]
@@ -174,14 +170,15 @@ async def calculate_full_price(
         "tools": active_tools,
         "payment_surcharge": payment_surcharge,
         "rain_surcharge": rain_surcharge,
-        "wait_surcharge": wait_surcharge,
+        "wait_fee_rate": wait_fee_rate,
         "acompanante": acompanante,
+        "acompanante_multiplier": float(cfg.get("ACOMPANANTE_MULTIPLIER", 1.0)),
         "segments": segment_details,
         "total": 0,
     }
 
-    if acompanante:
-        total *= 2.0
+    if acompanante and breakdown["acompanante_multiplier"] != 1.0:
+        total *= breakdown["acompanante_multiplier"]
 
     breakdown["total"] = round(total)
     return breakdown

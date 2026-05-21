@@ -11,6 +11,10 @@ if not DATABASE_URL:
 _engine_kwargs = {}
 if DATABASE_URL.startswith("sqlite"):
     _engine_kwargs["connect_args"] = {"check_same_thread": False}
+elif DATABASE_URL.startswith("postgresql"):
+    _engine_kwargs["pool_size"] = 2
+    _engine_kwargs["max_overflow"] = 3
+    _engine_kwargs["pool_pre_ping"] = True
 
 engine = create_engine(DATABASE_URL, **_engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
