@@ -16,14 +16,15 @@ def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 
 def find_keyword_match(addresses: list[str], db: Session) -> FixedPrice | None:
     rows = db.query(FixedPrice).filter(
-        FixedPrice.destination_keyword.isnot(None)
+        FixedPrice.destination_keyword.isnot(None),
+        FixedPrice.lat.is_(None),
     ).all()
 
     for addr in addresses:
         addr_lower = addr.lower()
         for row in rows:
             pattern = re.compile(
-                re.escape(row.destination_keyword.lower()), re.IGNORECASE
+                r'\b' + re.escape(row.destination_keyword.lower()) + r'\b', re.IGNORECASE
             )
             if pattern.search(addr_lower):
                 return row
@@ -32,7 +33,7 @@ def find_keyword_match(addresses: list[str], db: Session) -> FixedPrice | None:
 
 
 def find_proximity_match(
-    dest_lat: float, dest_lng: float, db: Session
+    dest_lat: float, dest_lng: float, addresses: list[str], db: Session
 ) -> FixedPrice | None:
     rows = db.query(FixedPrice).filter(
         FixedPrice.lat.isnot(None),
@@ -44,6 +45,17 @@ def find_proximity_match(
     best_dist = float('inf')
 
     for row in rows:
+        if row.destination_keyword:
+            keyword_matches = any(
+                re.search(
+                    r'\b' + re.escape(row.destination_keyword.lower()) + r'\b',
+                    addr.lower()
+                )
+                for addr in addresses
+            )
+            if not keyword_matches:
+                continue
+
         dist = _haversine_km(dest_lat, dest_lng, row.lat, row.lng)
         if dist <= row.radius_km and dist < best_dist:
             best = row

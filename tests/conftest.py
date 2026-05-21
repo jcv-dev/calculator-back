@@ -23,6 +23,9 @@ def db():
             destination_keyword=fp["destination_keyword"],
             price=float(fp["price"]),
             description=fp["description"],
+            lat=fp.get("lat"),
+            lng=fp.get("lng"),
+            radius_km=fp.get("radius_km"),
         ))
     for tool in DEFAULT_TOOLS:
         session.add(Tool(

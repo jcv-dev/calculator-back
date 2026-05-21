@@ -86,11 +86,12 @@ async def calculate_price(body: PriceRequest, db: Session = Depends(get_session)
         }
 
     # Proximity match: try to geocode each destination and check against
-    # FixedPrice rows that have lat/lng + radius configured
+    # FixedPrice rows that have lat/lng + radius configured.
+    # Rows with both keyword AND coords require BOTH to match.
     for seg in body.segments:
         dest_coords = await resolve_coords(seg.destination)
         if dest_coords:
-            proximity_match = find_proximity_match(dest_coords[0], dest_coords[1], db)
+            proximity_match = find_proximity_match(dest_coords[0], dest_coords[1], addresses, db)
             if proximity_match:
                 breakdown = await calculate_full_price(
                     segments=[],

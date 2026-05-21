@@ -212,20 +212,9 @@ async def update_fixed_price(
     fp = db.query(FixedPrice).filter(FixedPrice.id == fp_id).first()
     if not fp:
         raise HTTPException(status_code=404, detail="Fixed price not found")
-    if body.service_type is not None:
-        fp.service_type = body.service_type
-    if body.destination_keyword is not None:
-        fp.destination_keyword = body.destination_keyword
-    if body.price is not None:
-        fp.price = body.price
-    if body.description is not None:
-        fp.description = body.description
-    if body.lat is not None:
-        fp.lat = body.lat
-    if body.lng is not None:
-        fp.lng = body.lng
-    if body.radius_km is not None:
-        fp.radius_km = body.radius_km
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(fp, field, value)
     db.commit()
     db.refresh(fp)
     return {

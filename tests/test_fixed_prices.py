@@ -1,48 +1,125 @@
 import pytest
-from services.fixed_prices import find_keyword_match
 from models import FixedPrice
+from services.fixed_prices import find_keyword_match, find_proximity_match
+
+
+@pytest.fixture
+def kw_only_db(db):
+    db.add(FixedPrice(
+        service_type=None,
+        destination_keyword="cali",
+        price=120000,
+        description="Tarifa fija Tuluá → Cali (keyword-only)",
+        lat=None,
+        lng=None,
+        radius_km=None,
+    ))
+    db.add(FixedPrice(
+        service_type=None,
+        destination_keyword="buga",
+        price=35000,
+        description="Tarifa fija Tuluá → Buga (keyword-only)",
+        lat=None,
+        lng=None,
+        radius_km=None,
+    ))
+    db.add(FixedPrice(
+        service_type=None,
+        destination_keyword="aeropuerto",
+        price=150000,
+        description="Tarifa fija Tuluá → Aeropuerto (keyword-only)",
+        lat=None,
+        lng=None,
+        radius_km=None,
+    ))
+    db.commit()
+    return db
 
 
 class TestFindKeywordMatch:
-    def test_exact_match(self, db):
-        result = find_keyword_match(["Cali, Valle del Cauca"], db)
+    def test_exact_match(self, kw_only_db):
+        result = find_keyword_match(["Cali, Valle del Cauca"], kw_only_db)
         assert result is not None
         assert result.price == 120000
         assert result.destination_keyword == "cali"
 
-    def test_case_insensitive(self, db):
-        result = find_keyword_match(["viaje a CALI desde tulua"], db)
+    def test_case_insensitive(self, kw_only_db):
+        result = find_keyword_match(["viaje a CALI desde tulua"], kw_only_db)
         assert result is not None
         assert result.price == 120000
 
-    def test_keyword_in_middle(self, db):
-        result = find_keyword_match(["destino: Buga, valle"], db)
+    def test_keyword_in_middle(self, kw_only_db):
+        result = find_keyword_match(["destino: Buga, valle"], kw_only_db)
         assert result is not None
         assert result.price == 35000
 
-    def test_no_match(self, db):
-        result = find_keyword_match(["Cra 10 #12-34, Tuluá"], db)
+    def test_no_match(self, kw_only_db):
+        result = find_keyword_match(["Cra 10 #12-34, Tuluá"], kw_only_db)
         assert result is None
 
-    def test_keword_with_accent(self, db):
-        result = find_keyword_match(["Aeropuerto Alfonso Bonilla"], db)
+    def test_keword_with_accent(self, kw_only_db):
+        result = find_keyword_match(["Aeropuerto Alfonso Bonilla"], kw_only_db)
         assert result is not None
         assert result.price == 150000
 
-    def test_multi_address_first_match(self, db):
+    def test_multi_address_first_match(self, kw_only_db):
         result = find_keyword_match(
-            ["Cra 5 Tuluá", "Cali, Valle", "Buga, Valle"], db
+            ["Cra 5 Tuluá", "Cali, Valle", "Buga, Valle"], kw_only_db
         )
         assert result is not None
         assert result.price == 120000
 
-    def test_empty_addresses(self, db):
-        result = find_keyword_match([], db)
+    def test_empty_addresses(self, kw_only_db):
+        result = find_keyword_match([], kw_only_db)
         assert result is None
 
-    def test_partial_word_no_false_positive(self, db):
-        # "bugaloo" shouldn't match "buga" if we were doing whole words
-        # but our implementation uses regex search (substring)
-        # Let's verify behavior: this SHOULD match
-        result = find_keyword_match(["Villa Bugaloo"], db)
+    def test_partial_word_no_false_positive(self, kw_only_db):
+        result = find_keyword_match(["Villa Bugaloo"], kw_only_db)
+        assert result is None
+
+    def test_keyword_excludes_rows_with_coords(self, db):
+        # The default seed "cali" row has lat/lng — should NOT match via keyword
+        result = find_keyword_match(["Cali, Valle del Cauca"], db)
+        assert result is None
+
+
+class TestFindProximityMatch:
+    @pytest.fixture
+    def proximity_only_db(self, db):
+        db.add(FixedPrice(
+            service_type=None,
+            destination_keyword=None,
+            price=50000,
+            description="Solo proximidad",
+            lat=3.45,
+            lng=-76.53,
+            radius_km=20,
+        ))
+        db.commit()
+        return db
+
+    def test_proximity_only_match(self, proximity_only_db):
+        result = find_proximity_match(3.45, -76.53, ["Cra 10 Tuluá"], proximity_only_db)
         assert result is not None
+        assert result.price == 50000
+
+    def test_proximity_out_of_radius(self, db):
+        # Tuluá centro is ~80km from Cali, well outside 20km radius
+        result = find_proximity_match(4.0847, -76.1954, ["Cra 10 Tuluá"], db)
+        assert result is None
+
+    def test_and_logic_keyword_coords_both_match(self, db):
+        # "Aeropuerto Alfonso Bonilla" matches keyword AND coords
+        result = find_proximity_match(3.5432, -76.3816, ["Aeropuerto Alfonso Bonilla"], db)
+        assert result is not None
+        assert result.destination_keyword == "aeropuerto"
+
+    def test_and_logic_keyword_mismatch_skips_row(self, db):
+        # Coords are within aeropuerto radius, but keyword "aeropuerto" not in address
+        result = find_proximity_match(3.5432, -76.3816, ["Cerca del aerodromo"], db)
+        assert result is None
+
+    def test_and_logic_proximity_mismatch_skips_row(self, db):
+        # Keyword "aeropuerto" matches, but coords are far away
+        result = find_proximity_match(4.0847, -76.1954, ["Aeropuerto Alfonso Bonilla"], db)
+        assert result is None
