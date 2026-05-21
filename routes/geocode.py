@@ -12,14 +12,28 @@ logger = logging.getLogger("geocode")
 
 router = APIRouter(prefix="/api/geocode")
 
+_http_client = httpx.AsyncClient(timeout=10.0)
+
+
+@router.on_event("shutdown")
+async def shutdown():
+    await _http_client.aclose()
+
+
 GOOGLE_MAPS_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
 
-AUTOCOMPLETE_URL = "https://maps.googleapis.com/maps/api/place/autocomplete/json"
-DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
+PLACES_API_BASE = "https://places.googleapis.com/v1"
 
 TULUA_LAT = 4.0847
 TULUA_LNG = -76.1954
 BIAS_RADIUS = 50000
+
+
+def _headers() -> dict:
+    return {
+        "X-Goog-Api-Key": GOOGLE_MAPS_KEY,
+        "Content-Type": "application/json",
+    }
 
 
 @router.get("/search")
@@ -40,39 +54,49 @@ async def search_address(
             detail="Google Maps API key not configured on server",
         )
 
-    params = {
+    body = {
         "input": q.strip(),
-        "components": "country:co",
-        "location": f"{TULUA_LAT},{TULUA_LNG}",
-        "radius": BIAS_RADIUS,
-        "language": "es",
-        "key": GOOGLE_MAPS_KEY,
+        "locationBias": {
+            "circle": {
+                "center": {"latitude": TULUA_LAT, "longitude": TULUA_LNG},
+                "radius": BIAS_RADIUS,
+            }
+        },
+        "regionCode": "co",
+        "languageCode": "es",
     }
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(AUTOCOMPLETE_URL, params=params, timeout=8.0)
-        resp.raise_for_status()
-        data = resp.json()
+    resp = await _http_client.post(
+        f"{PLACES_API_BASE}/places:autocomplete",
+        headers=_headers(),
+        json=body,
+    )
 
-    status = data.get("status", "")
-    if status != "OK":
-        logger.warning("Google Places Autocomplete returned status=%s for q=%r", status, q.strip())
-        if status == "REQUEST_DENIED":
-            raise HTTPException(
-                status_code=503,
-                detail="Google Maps API key is invalid or Places API not enabled",
-            )
-        if status == "OVER_QUERY_LIMIT":
-            raise HTTPException(
-                status_code=429,
-                detail="Google Maps API quota exceeded",
-            )
-        return []
+    if resp.status_code == 403:
+        raise HTTPException(
+            status_code=503,
+            detail="Google Maps API key is invalid or Places API not enabled",
+        )
+    if resp.status_code == 429:
+        raise HTTPException(
+            status_code=429,
+            detail="Google Maps API quota exceeded",
+        )
 
-    result = [
-        {"display_name": item.get("description", ""), "place_id": item.get("place_id", "")}
-        for item in data.get("predictions", [])[:5]
-    ]
+    resp.raise_for_status()
+    data = resp.json()
+
+    suggestions = data.get("suggestions", [])
+    result = []
+    for s in suggestions:
+        pred = s.get("placePrediction")
+        if pred:
+            result.append({
+                "display_name": pred.get("text", {}).get("text", ""),
+                "place_id": pred.get("placeId", ""),
+            })
+
+    result = result[:5]
     cache_set("places_search", result, q.strip())
     return result
 
@@ -88,26 +112,29 @@ async def place_details(
     if cached is not None:
         return cached
 
-    params = {
-        "place_id": place_id,
-        "fields": "formatted_address,geometry",
-        "language": "es",
-        "key": GOOGLE_MAPS_KEY,
-    }
+    resp = await _http_client.get(
+        f"{PLACES_API_BASE}/places/{place_id}",
+        headers={
+            "X-Goog-Api-Key": GOOGLE_MAPS_KEY,
+            "X-Goog-FieldMask": "formattedAddress,location",
+        },
+    )
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(DETAILS_URL, params=params, timeout=8.0)
-        resp.raise_for_status()
-        data = resp.json()
-
-    if data.get("status") != "OK":
+    if resp.status_code == 404:
         raise HTTPException(404, "Place not found")
+    if resp.status_code == 403:
+        raise HTTPException(503, "Google Maps API key is invalid or Places API not enabled")
+    if resp.status_code == 429:
+        raise HTTPException(429, "Google Maps API quota exceeded")
 
-    result_data = data.get("result", {})
+    resp.raise_for_status()
+    place = resp.json()
+
+    loc = place.get("location", {})
     result = {
-        "display_name": result_data.get("formatted_address", ""),
-        "lat": result_data["geometry"]["location"]["lat"],
-        "lng": result_data["geometry"]["location"]["lng"],
+        "display_name": place.get("formattedAddress", ""),
+        "lat": loc.get("latitude"),
+        "lng": loc.get("longitude"),
     }
     cache_set("places_details", result, place_id)
     return result
@@ -128,9 +155,8 @@ async def reverse_geocode(
         "key": GOOGLE_MAPS_KEY,
     }
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(GEOCODE_URL, params=params, timeout=10.0)
-        data = resp.json()
+    resp = await _http_client.get(GEOCODE_URL, params=params)
+    data = resp.json()
 
     if data.get("status") != "OK" or not data.get("results"):
         return {"display_name": f"{lat:.4f}, {lng:.4f}", "lat": lat, "lng": lng}

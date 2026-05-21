@@ -174,8 +174,8 @@ class TestCalculateFullPrice:
         assert result["route_cost"] == 4000  # BASE_FARE (1.0 km)
         assert result["stop_fee"] == 0  # only 1 distance segment
         assert result["segment_fixed_prices"] == 8000
-        assert result["wait_surcharge"] == 3000  # purchases includes wait fee
-        assert result["total"] == 15000  # 4000 + 8000 + 3000
+        assert result["wait_fee_rate"] == 3000  # informational
+        assert result["total"] == 12000  # 4000 + 8000
 
     @pytest.mark.asyncio
     async def test_nequi_surcharge(self, config_rows, tool_rows):
@@ -216,7 +216,7 @@ class TestCalculateFullPrice:
         assert result["total"] == 5000  # 4000 (base) + 1000 (rain)
 
     @pytest.mark.asyncio
-    async def test_acompanante_doubles(self, config_rows, tool_rows):
+    async def test_acompanante_default_no_multiplier(self, config_rows, tool_rows):
         segs = [
             {"service_type": "domicilios", "has_coords": True, "fixed_price": 0},
         ]
@@ -232,7 +232,8 @@ class TestCalculateFullPrice:
         )
         
         assert result["acompanante"] is True
-        assert result["total"] == 8000  # 4000 * 2
+        assert result["acompanante_multiplier"] == 1.0
+        assert result["total"] == 4000  # 4000 * 1.0 (no change)
 
     @pytest.mark.asyncio
     async def test_tools_surcharge(self, config_rows, tool_rows):
@@ -273,10 +274,11 @@ class TestCalculateFullPrice:
             )
         
         # route_cost (5100) + stop_fee (1500) + segment_fixed (8000) = 14600
-        # + nequi (500) + rain (1000) + wait (3000) = 19100
-        # ×2 acompanante = 38200
-        assert result["wait_surcharge"] == 3000
-        assert result["total"] == 38200
+        # + nequi (500) + rain (1000) = 16100
+        # ×1 acompanante (default) = 16100
+        assert result["wait_fee_rate"] == 3000
+        assert result["acompanante_multiplier"] == 1.0
+        assert result["total"] == 16100
 
     @pytest.mark.asyncio
     async def test_zero_distance_fixed_only(self, config_rows, tool_rows):
@@ -296,8 +298,8 @@ class TestCalculateFullPrice:
         assert result["route_cost"] == 0  # no distance segments → no base fare
         assert result["segment_fixed_prices"] == 8000
         assert result["stop_fee"] == 0
-        assert result["wait_surcharge"] == 3000  # purchases includes wait fee
-        assert result["total"] == 11000  # 8000 + 3000
+        assert result["wait_fee_rate"] == 3000  # informational
+        assert result["total"] == 8000
 
     @pytest.mark.asyncio
     async def test_three_distance_segments(self, config_rows, tool_rows):

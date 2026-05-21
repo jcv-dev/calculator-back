@@ -6,10 +6,10 @@ from cachetools import TTLCache
 logger = logging.getLogger("cache")
 
 CACHE_CONFIG = {
-    "geocode": {"ttl": 604800, "maxsize": 2000},
-    "osrm": {"ttl": 2592000, "maxsize": 2000},
+    "geocode": {"ttl": 604800, "maxsize": 500},
+    "osrm": {"ttl": 2592000, "maxsize": 500},
     "places_search": {"ttl": 3600, "maxsize": 500},
-    "places_details": {"ttl": 2592000, "maxsize": 2000},
+    "places_details": {"ttl": 2592000, "maxsize": 500},
     "weather": {"ttl": 900, "maxsize": 10},
 }
 
