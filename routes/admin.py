@@ -33,6 +33,8 @@ class FixedPriceCreate(BaseModel):
 
 
 class FixedPriceUpdate(BaseModel):
+    service_type: str | None = None
+    destination_keyword: str | None = None
     price: float | None = None
     description: str | None = None
     lat: float | None = None
@@ -210,6 +212,10 @@ async def update_fixed_price(
     fp = db.query(FixedPrice).filter(FixedPrice.id == fp_id).first()
     if not fp:
         raise HTTPException(status_code=404, detail="Fixed price not found")
+    if body.service_type is not None:
+        fp.service_type = body.service_type
+    if body.destination_keyword is not None:
+        fp.destination_keyword = body.destination_keyword
     if body.price is not None:
         fp.price = body.price
     if body.description is not None:
