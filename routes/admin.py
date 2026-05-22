@@ -48,6 +48,7 @@ class ToolCreate(BaseModel):
     description: str = ""
     surcharge: float = 0.0
     material_symbol: str
+    color: str = ""
     active: bool = True
 
 
@@ -56,6 +57,7 @@ class ToolUpdate(BaseModel):
     description: str | None = None
     surcharge: float | None = None
     material_symbol: str | None = None
+    color: str | None = None
     active: bool | None = None
 
 
@@ -259,6 +261,7 @@ async def list_tools(
             "description": t.description,
             "surcharge": t.surcharge,
             "material_symbol": t.material_symbol,
+            "color": t.color or "",
             "active": t.active,
         }
         for t in rows
@@ -281,6 +284,7 @@ async def create_tool(
         description=body.description,
         surcharge=body.surcharge,
         material_symbol=body.material_symbol,
+        color=body.color,
         active=body.active,
     )
     db.add(tool)
@@ -293,6 +297,7 @@ async def create_tool(
         "description": tool.description,
         "surcharge": tool.surcharge,
         "material_symbol": tool.material_symbol,
+        "color": tool.color or "",
         "active": tool.active,
     }
 
@@ -316,6 +321,8 @@ async def update_tool(
         tool.surcharge = body.surcharge
     if body.material_symbol is not None:
         tool.material_symbol = body.material_symbol
+    if body.color is not None:
+        tool.color = body.color
     if body.active is not None:
         tool.active = body.active
     db.commit()
@@ -327,6 +334,7 @@ async def update_tool(
         "description": tool.description,
         "surcharge": tool.surcharge,
         "material_symbol": tool.material_symbol,
+        "color": tool.color or "",
         "active": tool.active,
     }
 

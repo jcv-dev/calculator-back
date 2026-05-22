@@ -1,13 +1,15 @@
 import pytest
 import os
-from sqlalchemy import create_engine, inspect
-from sqlalchemy.orm import sessionmaker
-from database import Base
-from models import FareConfig, FixedPrice
-from seed import DEFAULT_CONFIG, DEFAULT_FIXED_PRICES
 
-
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ["SESSION_SECRET"] = "test-secret-for-api-tests"
+
+from sqlalchemy import create_engine, inspect  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+from database import Base  # noqa: E402
+from models import FareConfig, FixedPrice, Tool  # noqa: E402
+from seed import DEFAULT_CONFIG, DEFAULT_FIXED_PRICES, DEFAULT_TOOLS  # noqa: E402
 
 
 @pytest.fixture
@@ -122,3 +124,73 @@ class TestAdminAuth:
 class TestAdminFixedPrices:
     def test_crud_flow(self):
         pass
+
+
+class TestToolsApi:
+    def test_public_tools_returns_color(self):
+        from fastapi.testclient import TestClient
+        from main import app
+        from database import get_session
+
+        engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        Base.metadata.create_all(bind=engine)
+        TestingSession = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+        s = TestingSession()
+        for key, (value, description) in DEFAULT_CONFIG.items():
+            s.add(FareConfig(key=key, value=float(value), description=description))
+        s.add(Tool(
+            key="hammer", label="Martillo", material_symbol="construction",
+            color="#ff0000", active=True,
+        ))
+        s.add(Tool(
+            key="saw", label="Sierra", material_symbol="build",
+            color="", active=True,
+        ))
+        s.commit()
+
+        def override():
+            yield s
+        app.dependency_overrides.clear()
+        app.dependency_overrides[get_session] = override
+
+        with TestClient(app) as client:
+            resp = client.get("/api/tools")
+        assert resp.status_code == 200
+        data = resp.json()
+        tool_map = {t["key"]: t for t in data}
+        assert tool_map["hammer"]["color"] == "#ff0000"
+        assert tool_map["saw"]["color"] == ""
+
+    def test_admin_tool_create_with_color(self):
+        os.environ["ADMIN_PASSWORD"] = "adminpass"
+        from fastapi.testclient import TestClient
+        from main import app
+        from database import get_session
+
+        engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        Base.metadata.create_all(bind=engine)
+        TestingSession = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+        s = TestingSession()
+        for key, (value, description) in DEFAULT_CONFIG.items():
+            s.add(FareConfig(key=key, value=float(value), description=description))
+        s.commit()
+
+        def override():
+            yield s
+        app.dependency_overrides.clear()
+        app.dependency_overrides[get_session] = override
+
+        with TestClient(app, base_url="https://testserver") as client:
+            resp = client.post("/admin/api/login", json={"password": "adminpass"})
+            assert resp.status_code == 200
+
+            resp = client.post("/admin/api/tools", json={
+                "key": "wrench",
+                "label": "Llave",
+                "material_symbol": "handyman",
+                "color": "#00ff00",
+            })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["key"] == "wrench"
+        assert data["color"] == "#00ff00"

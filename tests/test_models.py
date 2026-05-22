@@ -54,3 +54,20 @@ class TestFixedPrice:
         session.add(fp)
         session.commit()
         assert fp.id is not None
+
+
+class TestTool:
+    def test_create_with_color(self, session):
+        from models import Tool
+        t = Tool(key="test_tool", label="Test", material_symbol="star", color="#ff6600")
+        session.add(t)
+        session.commit()
+        assert t.id is not None
+        assert t.color == "#ff6600"
+
+    def test_color_defaults_to_empty(self, session):
+        from models import Tool
+        t = Tool(key="no_color", label="No Color", material_symbol="circle")
+        session.add(t)
+        session.commit()
+        assert t.color == ""

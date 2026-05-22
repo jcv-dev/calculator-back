@@ -100,10 +100,15 @@ async def calculate_full_price(
     active_tools = []
     for tool_key in tools:
         tool = tool_map.get(tool_key)
-        if tool and tool.surcharge > 0:
-            surcharge = int(tool.surcharge)
-            total += surcharge
-            active_tools.append({"tool": tool.label, "surcharge": surcharge})
+        if tool:
+            surcharge = int(tool.surcharge) if tool.surcharge > 0 else 0
+            if surcharge > 0:
+                total += surcharge
+            active_tools.append({
+                "tool": tool.label,
+                "surcharge": surcharge,
+                "color": getattr(tool, 'color', '') or '',
+            })
 
     # Payment method surcharge
     payment_surcharge = 0

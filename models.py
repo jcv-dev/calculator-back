@@ -40,4 +40,5 @@ class Tool(Base):
     description = Column(Text, default="")
     surcharge = Column(Float, nullable=False, default=0.0)
     material_symbol = Column(String(50), nullable=False, default="")
+    color = Column(String(7), default="")
     active = Column(Boolean, nullable=False, default=True)
