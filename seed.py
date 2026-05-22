@@ -3,10 +3,10 @@ from models import FareConfig, FixedPrice, Tool
 
 DEFAULT_CONFIG = {
     "BASE_FARE": (4000, "Minimum fare up to 1.0 km"),
-    "EXTRA_STOP_FEE": (1500, "Applied to every stop beyond the first delivery destination"),
+    "EXTRA_STOP_FEE": (0, "Applied to every stop beyond the first delivery destination"),
     "METODO_NEQUI_SURCHARGE": (500, "Handling fee for Nequi logistics"),
-    "RAIN_SURCHARGE": (1000, "Dynamic fee auto-applied if OpenWeather API detects rain"),
-    "WAIT_FEE": (3000, "Surcharge for wait times over 15 min (applied per each 15 min)"),
+    "RAIN_SURCHARGE": (500, "Dynamic fee auto-applied if OpenWeather API detects rain"),
+    "WAIT_FEE": (2000, "Surcharge for wait times over 15 min (applied per each 15 min)"),
     "TIER_1_LIMIT": (1.0, "Upper bound of tier 1 (km); distances ≤ this get flat BASE_FARE"),
     "TIER_1_RATE": (0, "Per-km COP rate within tier 1 (0 = flat-fee zone)"),
     "TIER_2_LIMIT": (1.5, "Upper bound of tier 2 (km)"),

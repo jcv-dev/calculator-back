@@ -157,7 +157,7 @@ Server starts at `http://localhost:8000` with auto-reload enabled.
 
 ### Database
 
-SQLite file (`fares.db`) is created automatically in the `backend/` directory on first run. The config table is seeded with defaults on every startup (existing rows are preserved).
+SQLite file (`database.db`) is created automatically in the `backend/` directory on first run. The config table is seeded with defaults on every startup (existing rows are preserved).
 
 ## Production
 
