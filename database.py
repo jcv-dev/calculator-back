@@ -23,6 +23,13 @@ Base = declarative_base()
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    columns = [c["name"] for c in inspector.get_columns("tools")]
+    if "color" not in columns:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE tools ADD COLUMN color VARCHAR(7) DEFAULT ''"))
+            conn.commit()
 
 
 def get_session():

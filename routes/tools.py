@@ -17,6 +17,7 @@ async def list_active_tools(db: Session = Depends(get_session)):
             "description": t.description,
             "surcharge": t.surcharge,
             "material_symbol": t.material_symbol,
+            "color": t.color or "",
             "active": t.active,
         }
         for t in rows

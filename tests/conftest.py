@@ -34,6 +34,7 @@ def db():
             description=tool["description"],
             surcharge=float(tool["surcharge"]),
             material_symbol=tool["material_symbol"],
+            color=tool.get("color", ""),
             active=tool["active"],
         ))
     session.commit()

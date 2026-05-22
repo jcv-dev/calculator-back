@@ -74,6 +74,7 @@ DEFAULT_TOOLS = [
         "description": "Pedidos pesados o voluminosos",
         "surcharge": 0,
         "material_symbol": "shopping_basket",
+        "color": "#d97706",
         "active": True,
     },
     {
@@ -82,6 +83,7 @@ DEFAULT_TOOLS = [
         "description": "Bolso térmico para entregas",
         "surcharge": 0,
         "material_symbol": "work",
+        "color": "#3b82f6",
         "active": True,
     },
 ]
@@ -125,6 +127,7 @@ def seed_config(db: Session):
                 description=tool["description"],
                 surcharge=float(tool["surcharge"]),
                 material_symbol=tool["material_symbol"],
+                color=tool.get("color", ""),
                 active=tool["active"],
             ))
 

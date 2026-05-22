@@ -236,6 +236,30 @@ class TestCalculateFullPrice:
         assert result["total"] == 4000  # 4000 * 1.0 (no change)
 
     @pytest.mark.asyncio
+    async def test_tools_appear_with_zero_surcharge(self, config_rows, tool_rows):
+        segs = [
+            {"service_type": "domicilios", "has_coords": True, "fixed_price": 0},
+        ]
+        result = await calculate_full_price(
+            segments=segs,
+            total_km=1.0,
+            tools=["canasta", "maletin"],
+            payment_method="efectivo",
+            acompanante=False,
+            is_raining=False,
+            config_rows=config_rows,
+            tool_rows=tool_rows,
+        )
+
+        assert len(result["tools"]) == 2
+        tool_labels = {t["tool"] for t in result["tools"]}
+        assert tool_labels == {"Canasta", "Maletín"}
+        for t in result["tools"]:
+            assert t["surcharge"] == 0
+            assert "color" in t
+            assert isinstance(t["color"], str)
+
+    @pytest.mark.asyncio
     async def test_tools_surcharge(self, config_rows, tool_rows):
         segs = [
             {"service_type": "domicilios", "has_coords": True, "fixed_price": 0},
