@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from database import get_session
 from models import Tool
 
@@ -7,8 +8,9 @@ router = APIRouter(prefix="/api")
 
 
 @router.get("/tools")
-async def list_active_tools(db: Session = Depends(get_session)):
-    rows = db.query(Tool).filter(Tool.active == True).order_by(Tool.key).all()
+async def list_active_tools(db: AsyncSession = Depends(get_session)):
+    result = await db.execute(select(Tool).where(Tool.active == True).order_by(Tool.key))
+    rows = result.scalars().all()
     return [
         {
             "id": t.id,

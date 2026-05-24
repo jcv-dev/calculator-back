@@ -1,17 +1,22 @@
 import os
 from fastapi import Request, HTTPException, status
-from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
 def get_admin_password():
-    return os.getenv("ADMIN_PASSWORD", "admin")
+    pw = os.getenv("ADMIN_PASSWORD")
+    if not pw:
+        raise RuntimeError("ADMIN_PASSWORD environment variable is not set")
+    return pw
 
 
 def get_session_secret():
-    return os.getenv("SESSION_SECRET", "default-secret-change-me")
+    secret = os.getenv("SESSION_SECRET")
+    if not secret:
+        raise RuntimeError("SESSION_SECRET environment variable is not set")
+    return secret
 
 
 async def login_user(request: Request, password: str) -> bool:

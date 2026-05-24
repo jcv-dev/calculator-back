@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from database import get_session
 from models import FareConfig, FixedPrice, Tool
 from auth import login_user, logout_user, require_admin
@@ -83,10 +84,11 @@ async def admin_logout(request: Request):
 @router.get("/config")
 async def list_config(
     request: Request,
-    db: Session = Depends(get_session),
+    db: AsyncSession = Depends(get_session),
     _=Depends(require_admin),
 ):
-    rows = db.query(FareConfig).order_by(FareConfig.key).all()
+    result = await db.execute(select(FareConfig).order_by(FareConfig.key))
+    rows = result.scalars().all()
     return [
         {
             "key": r.key,
@@ -101,16 +103,17 @@ async def list_config(
 async def create_config(
     request: Request,
     body: CreateConfigRequest,
-    db: Session = Depends(get_session),
+    db: AsyncSession = Depends(get_session),
     _=Depends(require_admin),
 ):
-    existing = db.query(FareConfig).filter(FareConfig.key == body.key).first()
+    result = await db.execute(select(FareConfig).where(FareConfig.key == body.key))
+    existing = result.scalars().first()
     if existing:
         raise HTTPException(status_code=400, detail="Config key already exists")
     row = FareConfig(key=body.key, value=float(body.value), description=body.description)
     db.add(row)
-    db.commit()
-    db.refresh(row)
+    await db.commit()
+    await db.refresh(row)
     return {"key": row.key, "value": row.value, "description": row.description}
 
 
@@ -119,14 +122,15 @@ async def update_config(
     request: Request,
     key: str,
     body: UpdateConfigRequest,
-    db: Session = Depends(get_session),
+    db: AsyncSession = Depends(get_session),
     _=Depends(require_admin),
 ):
-    row = db.query(FareConfig).filter(FareConfig.key == key).first()
+    result = await db.execute(select(FareConfig).where(FareConfig.key == key))
+    row = result.scalars().first()
     if not row:
         raise HTTPException(status_code=404, detail="Config key not found")
     row.value = body.value
-    db.commit()
+    await db.commit()
     return {"key": row.key, "value": row.value, "description": row.description}
 
 
@@ -134,24 +138,26 @@ async def update_config(
 async def delete_config(
     request: Request,
     key: str,
-    db: Session = Depends(get_session),
+    db: AsyncSession = Depends(get_session),
     _=Depends(require_admin),
 ):
-    row = db.query(FareConfig).filter(FareConfig.key == key).first()
+    result = await db.execute(select(FareConfig).where(FareConfig.key == key))
+    row = result.scalars().first()
     if not row:
         raise HTTPException(status_code=404, detail="Config key not found")
-    db.delete(row)
-    db.commit()
+    await db.delete(row)
+    await db.commit()
     return {"deleted": True}
 
 
 @router.get("/fixed-prices")
 async def list_fixed_prices(
     request: Request,
-    db: Session = Depends(get_session),
+    db: AsyncSession = Depends(get_session),
     _=Depends(require_admin),
 ):
-    rows = db.query(FixedPrice).order_by(FixedPrice.id).all()
+    result = await db.execute(select(FixedPrice).order_by(FixedPrice.id))
+    rows = result.scalars().all()
     return [
         {
             "id": r.id,
@@ -171,7 +177,7 @@ async def list_fixed_prices(
 async def create_fixed_price(
     request: Request,
     body: FixedPriceCreate,
-    db: Session = Depends(get_session),
+    db: AsyncSession = Depends(get_session),
     _=Depends(require_admin),
 ):
     if not body.service_type and not body.destination_keyword and not (body.lat and body.lng):
@@ -189,8 +195,8 @@ async def create_fixed_price(
         radius_km=body.radius_km,
     )
     db.add(fp)
-    db.commit()
-    db.refresh(fp)
+    await db.commit()
+    await db.refresh(fp)
     return {
         "id": fp.id,
         "service_type": fp.service_type,
@@ -208,17 +214,18 @@ async def update_fixed_price(
     request: Request,
     fp_id: int,
     body: FixedPriceUpdate,
-    db: Session = Depends(get_session),
+    db: AsyncSession = Depends(get_session),
     _=Depends(require_admin),
 ):
-    fp = db.query(FixedPrice).filter(FixedPrice.id == fp_id).first()
+    result = await db.execute(select(FixedPrice).where(FixedPrice.id == fp_id))
+    fp = result.scalars().first()
     if not fp:
         raise HTTPException(status_code=404, detail="Fixed price not found")
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(fp, field, value)
-    db.commit()
-    db.refresh(fp)
+    await db.commit()
+    await db.refresh(fp)
     return {
         "id": fp.id,
         "service_type": fp.service_type,
@@ -235,24 +242,26 @@ async def update_fixed_price(
 async def delete_fixed_price(
     request: Request,
     fp_id: int,
-    db: Session = Depends(get_session),
+    db: AsyncSession = Depends(get_session),
     _=Depends(require_admin),
 ):
-    fp = db.query(FixedPrice).filter(FixedPrice.id == fp_id).first()
+    result = await db.execute(select(FixedPrice).where(FixedPrice.id == fp_id))
+    fp = result.scalars().first()
     if not fp:
         raise HTTPException(status_code=404, detail="Fixed price not found")
-    db.delete(fp)
-    db.commit()
+    await db.delete(fp)
+    await db.commit()
     return {"deleted": True}
 
 
 @router.get("/tools")
 async def list_tools(
     request: Request,
-    db: Session = Depends(get_session),
+    db: AsyncSession = Depends(get_session),
     _=Depends(require_admin),
 ):
-    rows = db.query(Tool).order_by(Tool.key).all()
+    result = await db.execute(select(Tool).order_by(Tool.key))
+    rows = result.scalars().all()
     return [
         {
             "id": t.id,
@@ -272,10 +281,11 @@ async def list_tools(
 async def create_tool(
     request: Request,
     body: ToolCreate,
-    db: Session = Depends(get_session),
+    db: AsyncSession = Depends(get_session),
     _=Depends(require_admin),
 ):
-    existing = db.query(Tool).filter(Tool.key == body.key).first()
+    result = await db.execute(select(Tool).where(Tool.key == body.key))
+    existing = result.scalars().first()
     if existing:
         raise HTTPException(status_code=400, detail="Tool key already exists")
     tool = Tool(
@@ -288,8 +298,8 @@ async def create_tool(
         active=body.active,
     )
     db.add(tool)
-    db.commit()
-    db.refresh(tool)
+    await db.commit()
+    await db.refresh(tool)
     return {
         "id": tool.id,
         "key": tool.key,
@@ -307,10 +317,11 @@ async def update_tool(
     request: Request,
     tool_id: int,
     body: ToolUpdate,
-    db: Session = Depends(get_session),
+    db: AsyncSession = Depends(get_session),
     _=Depends(require_admin),
 ):
-    tool = db.query(Tool).filter(Tool.id == tool_id).first()
+    result = await db.execute(select(Tool).where(Tool.id == tool_id))
+    tool = result.scalars().first()
     if not tool:
         raise HTTPException(status_code=404, detail="Tool not found")
     if body.label is not None:
@@ -325,8 +336,8 @@ async def update_tool(
         tool.color = body.color
     if body.active is not None:
         tool.active = body.active
-    db.commit()
-    db.refresh(tool)
+    await db.commit()
+    await db.refresh(tool)
     return {
         "id": tool.id,
         "key": tool.key,
@@ -343,12 +354,13 @@ async def update_tool(
 async def delete_tool(
     request: Request,
     tool_id: int,
-    db: Session = Depends(get_session),
+    db: AsyncSession = Depends(get_session),
     _=Depends(require_admin),
 ):
-    tool = db.query(Tool).filter(Tool.id == tool_id).first()
+    result = await db.execute(select(Tool).where(Tool.id == tool_id))
+    tool = result.scalars().first()
     if not tool:
         raise HTTPException(status_code=404, detail="Tool not found")
-    db.delete(tool)
-    db.commit()
+    await db.delete(tool)
+    await db.commit()
     return {"deleted": True}

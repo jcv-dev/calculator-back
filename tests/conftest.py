@@ -1,56 +1,61 @@
+import os
+os.environ.setdefault("SESSION_SECRET", "conftest-secret")
+
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy import select
 from database import Base, get_session
 from main import app
 from models import FareConfig, FixedPrice, Tool
 from seed import DEFAULT_CONFIG, DEFAULT_FIXED_PRICES, DEFAULT_TOOLS
 
 
-@pytest.fixture
-def db():
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-    TestingSession = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-    Base.metadata.create_all(bind=engine)
+@pytest_asyncio.fixture
+async def db():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", connect_args={"check_same_thread": False})
+    TestingSession = async_sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
-    session = TestingSession()
-    for key, (value, description) in DEFAULT_CONFIG.items():
-        session.add(FareConfig(key=key, value=float(value), description=description))
-    for fp in DEFAULT_FIXED_PRICES:
-        session.add(FixedPrice(
-            service_type=fp["service_type"],
-            destination_keyword=fp["destination_keyword"],
-            price=float(fp["price"]),
-            description=fp["description"],
-            lat=fp.get("lat"),
-            lng=fp.get("lng"),
-            radius_km=fp.get("radius_km"),
-        ))
-    for tool in DEFAULT_TOOLS:
-        session.add(Tool(
-            key=tool["key"],
-            label=tool["label"],
-            description=tool["description"],
-            surcharge=float(tool["surcharge"]),
-            material_symbol=tool["material_symbol"],
-            color=tool.get("color", ""),
-            active=tool["active"],
-        ))
-    session.commit()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
-    yield session
-    session.close()
-
-
-@pytest.fixture
-def config_rows(db):
-    return db.query(FareConfig).all()
+    async with TestingSession() as session:
+        for key, (value, description) in DEFAULT_CONFIG.items():
+            session.add(FareConfig(key=key, value=float(value), description=description))
+        for fp in DEFAULT_FIXED_PRICES:
+            session.add(FixedPrice(
+                service_type=fp["service_type"],
+                destination_keyword=fp["destination_keyword"],
+                price=float(fp["price"]),
+                description=fp["description"],
+                lat=fp.get("lat"),
+                lng=fp.get("lng"),
+                radius_km=fp.get("radius_km"),
+            ))
+        for tool in DEFAULT_TOOLS:
+            session.add(Tool(
+                key=tool["key"],
+                label=tool["label"],
+                description=tool["description"],
+                surcharge=float(tool["surcharge"]),
+                material_symbol=tool["material_symbol"],
+                color=tool.get("color", ""),
+                active=tool["active"],
+            ))
+        await session.commit()
+        yield session
 
 
-@pytest.fixture
-def tool_rows(db):
-    return db.query(Tool).all()
+@pytest_asyncio.fixture
+async def config_rows(db):
+    result = await db.execute(select(FareConfig))
+    return result.scalars().all()
+
+
+@pytest_asyncio.fixture
+async def tool_rows(db):
+    result = await db.execute(select(Tool))
+    return result.scalars().all()
 
 
 @pytest.fixture

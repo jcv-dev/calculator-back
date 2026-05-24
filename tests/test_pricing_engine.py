@@ -151,9 +151,9 @@ class TestCalculateFullPrice:
             config_rows=config_rows,
             tool_rows=tool_rows,
         )
-        assert result["stop_fee"] == 1500  # 1 extra stop
+        assert result["stop_fee"] == 0  # EXTRA_STOP_FEE is 0
         assert result["route_cost"] == 4600  # 4000 + 75 + 525
-        assert result["total"] == 6100  # 4600 + 1500
+        assert result["total"] == 4600  # 4600 + 0
 
     @pytest.mark.asyncio
     async def test_mixed_distance_and_fixed_segments(self, config_rows, tool_rows):
@@ -174,7 +174,7 @@ class TestCalculateFullPrice:
         assert result["route_cost"] == 4000  # BASE_FARE (1.0 km)
         assert result["stop_fee"] == 0  # only 1 distance segment
         assert result["segment_fixed_prices"] == 8000
-        assert result["wait_fee_rate"] == 3000  # informational
+        assert result["wait_fee_rate"] == 2000  # informational
         assert result["total"] == 12000  # 4000 + 8000
 
     @pytest.mark.asyncio
@@ -212,8 +212,8 @@ class TestCalculateFullPrice:
             tool_rows=tool_rows,
         )
         
-        assert result["rain_surcharge"] == 1000
-        assert result["total"] == 5000  # 4000 (base) + 1000 (rain)
+        assert result["rain_surcharge"] == 500
+        assert result["total"] == 4500  # 4000 (base) + 500 (rain)
 
     @pytest.mark.asyncio
     async def test_acompanante_default_no_multiplier(self, config_rows, tool_rows):
@@ -297,12 +297,12 @@ class TestCalculateFullPrice:
             tool_rows=tool_rows,
             )
         
-        # route_cost (5100) + stop_fee (1500) + segment_fixed (8000) = 14600
-        # + nequi (500) + rain (1000) = 16100
-        # ×1 acompanante (default) = 16100
-        assert result["wait_fee_rate"] == 3000
+        # route_cost (5100) + stop_fee (0) + segment_fixed (8000) = 13100
+        # + nequi (500) + rain (500) = 14100
+        # ×1 acompanante (default) = 14100
+        assert result["wait_fee_rate"] == 2000
         assert result["acompanante_multiplier"] == 1.0
-        assert result["total"] == 16100
+        assert result["total"] == 14100
 
     @pytest.mark.asyncio
     async def test_zero_distance_fixed_only(self, config_rows, tool_rows):
@@ -322,7 +322,7 @@ class TestCalculateFullPrice:
         assert result["route_cost"] == 0  # no distance segments → no base fare
         assert result["segment_fixed_prices"] == 8000
         assert result["stop_fee"] == 0
-        assert result["wait_fee_rate"] == 3000  # informational
+        assert result["wait_fee_rate"] == 2000  # informational
         assert result["total"] == 8000
 
     @pytest.mark.asyncio
@@ -343,4 +343,4 @@ class TestCalculateFullPrice:
             tool_rows=tool_rows,
         )
         
-        assert result["stop_fee"] == 3000  # 2 extra stops × 1500
+        assert result["stop_fee"] == 0  # EXTRA_STOP_FEE is 0

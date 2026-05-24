@@ -1,12 +1,16 @@
 import os
+import json
 import logging
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 from dotenv import load_dotenv
+from sqlalchemy import text
 
-from database import init_db, get_session
+from database import init_db, get_session, AsyncSessionLocal
 from seed import seed_config
 from models import FareConfig, FixedPrice, Tool  # noqa: ensure all models imported for create_all
 from services.cache import cache_stats
@@ -19,9 +23,22 @@ from auth import get_session_secret
 
 load_dotenv()
 
+
+class JSONFormatter(logging.Formatter):
+    def format(self, record):
+        return json.dumps({
+            "ts": self.formatTime(record),
+            "level": record.levelname,
+            "name": record.name,
+            "msg": record.getMessage(),
+        }, ensure_ascii=False)
+
+
+_handler = logging.StreamHandler()
+_handler.setFormatter(JSONFormatter())
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
-    format="%(levelname)s %(name)s %(message)s",
+    handlers=[_handler],
 )
 logger = logging.getLogger("domii")
 
@@ -52,19 +69,52 @@ app.include_router(config_router)
 app.include_router(tools_router)
 
 
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.detail},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"error": "Validation failed", "detail": exc.errors()},
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception")
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error"},
+    )
+
+
 @app.on_event("startup")
-def startup():
-    init_db()
-    db = next(get_session())
-    try:
-        seed_config(db)
-    finally:
-        db.close()
+async def startup():
+    await init_db()
+    async with AsyncSessionLocal() as db:
+        try:
+            await seed_config(db)
+        except Exception:
+            await db.rollback()
+            raise
 
 
 @app.get("/api/health")
-def health():
-    return {"status": "ok", "cache": cache_stats()}
+async def health():
+    db_status = "ok"
+    try:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT 1"))
+    except Exception as e:
+        db_status = "error"
+        logger.error("Health check DB failure: %s", e)
+    return {"status": "ok", "database": db_status, "cache": cache_stats()}
 
 
 if __name__ == "__main__":

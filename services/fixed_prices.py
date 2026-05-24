@@ -1,6 +1,7 @@
 import re
 import math
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from models import FixedPrice
 
 
@@ -14,11 +15,14 @@ def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-def find_keyword_match(addresses: list[str], db: Session) -> FixedPrice | None:
-    rows = db.query(FixedPrice).filter(
-        FixedPrice.destination_keyword.isnot(None),
-        FixedPrice.lat.is_(None),
-    ).all()
+async def find_keyword_match(addresses: list[str], db: AsyncSession) -> FixedPrice | None:
+    result = await db.execute(
+        select(FixedPrice).where(
+            FixedPrice.destination_keyword.isnot(None),
+            FixedPrice.lat.is_(None),
+        )
+    )
+    rows = result.scalars().all()
 
     for addr in addresses:
         addr_lower = addr.lower()
@@ -32,14 +36,17 @@ def find_keyword_match(addresses: list[str], db: Session) -> FixedPrice | None:
     return None
 
 
-def find_proximity_match(
-    dest_lat: float, dest_lng: float, addresses: list[str], db: Session
+async def find_proximity_match(
+    dest_lat: float, dest_lng: float, addresses: list[str], db: AsyncSession
 ) -> FixedPrice | None:
-    rows = db.query(FixedPrice).filter(
-        FixedPrice.lat.isnot(None),
-        FixedPrice.lng.isnot(None),
-        FixedPrice.radius_km.isnot(None),
-    ).all()
+    result = await db.execute(
+        select(FixedPrice).where(
+            FixedPrice.lat.isnot(None),
+            FixedPrice.lng.isnot(None),
+            FixedPrice.radius_km.isnot(None),
+        )
+    )
+    rows = result.scalars().all()
 
     best = None
     best_dist = float('inf')
@@ -64,13 +71,27 @@ def find_proximity_match(
     return best
 
 
-def get_service_price(service_type: str, db: Session) -> float | None:
-    row = db.query(FixedPrice).filter(
-        FixedPrice.service_type == service_type,
-        FixedPrice.destination_keyword.is_(None),
-        FixedPrice.lat.is_(None),
-    ).first()
-
+async def get_service_price(service_type: str, db: AsyncSession) -> float | None:
+    result = await db.execute(
+        select(FixedPrice).where(
+            FixedPrice.service_type == service_type,
+            FixedPrice.destination_keyword.is_(None),
+            FixedPrice.lat.is_(None),
+        )
+    )
+    row = result.scalars().first()
     if row:
         return row.price
     return None
+
+
+async def get_service_prices_map(db: AsyncSession) -> dict[str, float]:
+    result = await db.execute(
+        select(FixedPrice).where(
+            FixedPrice.service_type.isnot(None),
+            FixedPrice.destination_keyword.is_(None),
+            FixedPrice.lat.is_(None),
+        )
+    )
+    rows = result.scalars().all()
+    return {r.service_type: r.price for r in rows}

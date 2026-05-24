@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, or_
 from database import get_session
 from models import FareConfig, Tool
 from services.geocode import geocode_address
 from services.osrm import get_total_distance
 from services.weather import check_rain
 from services.pricing_engine import calculate_full_price
-from services.fixed_prices import find_keyword_match, find_proximity_match, get_service_price
+from services.fixed_prices import find_keyword_match, find_proximity_match, get_service_prices_map
 from services.constants import SERVICE_TYPES
 
 router = APIRouter(prefix="/api")
@@ -53,13 +54,17 @@ async def resolve_coords(loc: LocationItem | None) -> tuple[float, float] | None
 
 
 @router.post("/calculate-price")
-async def calculate_price(body: PriceRequest, db: Session = Depends(get_session)):
+async def calculate_price(body: PriceRequest, db: AsyncSession = Depends(get_session)):
     addresses = [s.destination.address for s in body.segments]
     is_raining = await check_rain()
-    config_rows = db.query(FareConfig).all()
-    tool_rows = db.query(Tool).filter(Tool.active == True).all()
 
-    keyword_match = find_keyword_match(addresses, db)
+    config_result = await db.execute(select(FareConfig))
+    config_rows = config_result.scalars().all()
+
+    tool_result = await db.execute(select(Tool).where(Tool.active == True))
+    tool_rows = tool_result.scalars().all()
+
+    keyword_match = await find_keyword_match(addresses, db)
     if keyword_match:
         breakdown = await calculate_full_price(
             segments=[],
@@ -91,7 +96,7 @@ async def calculate_price(body: PriceRequest, db: Session = Depends(get_session)
     for seg in body.segments:
         dest_coords = await resolve_coords(seg.destination)
         if dest_coords:
-            proximity_match = find_proximity_match(dest_coords[0], dest_coords[1], addresses, db)
+            proximity_match = await find_proximity_match(dest_coords[0], dest_coords[1], addresses, db)
             if proximity_match:
                 breakdown = await calculate_full_price(
                     segments=[],
@@ -160,7 +165,9 @@ async def calculate_price(body: PriceRequest, db: Session = Depends(get_session)
             or (not loc.address or not loc.address.strip())
         ) and not (loc.lat is not None and loc.lng is not None)
 
-    # Determine segment prices
+    # Batch-load all service prices once (N+1 fix)
+    service_price_map = await get_service_prices_map(db)
+
     seg_dicts = []
     for seg in body.segments:
         svc_config = SERVICE_TYPES.get(seg.service_type, {})
@@ -172,9 +179,9 @@ async def calculate_price(body: PriceRequest, db: Session = Depends(get_session)
 
         fp = None
         if not service_has_coords:
-            fp = get_service_price(seg.service_type, db) or svc_config.get("default_price", 0)
+            fp = service_price_map.get(seg.service_type) or svc_config.get("default_price", 0)
         elif dest_is_any:
-            fp = get_service_price(seg.service_type, db)
+            fp = service_price_map.get(seg.service_type)
 
         seg_dicts.append({
             "service_type": seg.service_type,

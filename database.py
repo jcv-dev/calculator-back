@@ -1,40 +1,40 @@
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy.orm import declarative_base
+from sqlalchemy import NullPool, inspect, text
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 if not DATABASE_URL:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    DATABASE_URL = f"sqlite:///{os.path.join(BASE_DIR, 'database.db')}"
+    DATABASE_URL = f"sqlite+aiosqlite:///{os.path.join(BASE_DIR, 'database.db')}"
 
 _engine_kwargs = {}
 if DATABASE_URL.startswith("sqlite"):
     _engine_kwargs["connect_args"] = {"check_same_thread": False}
 elif DATABASE_URL.startswith("postgresql"):
-    _engine_kwargs["pool_size"] = 2
-    _engine_kwargs["max_overflow"] = 3
-    _engine_kwargs["pool_pre_ping"] = True
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+    _engine_kwargs["poolclass"] = NullPool
 
-engine = create_engine(DATABASE_URL, **_engine_kwargs)
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+engine = create_async_engine(DATABASE_URL, **_engine_kwargs)
+AsyncSessionLocal = async_sessionmaker(bind=engine, autocommit=False, autoflush=False)
 Base = declarative_base()
 
 
-def init_db():
-    Base.metadata.create_all(bind=engine)
-    from sqlalchemy import inspect, text
-    inspector = inspect(engine)
-    columns = [c["name"] for c in inspector.get_columns("tools")]
-    if "color" not in columns:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE tools ADD COLUMN color VARCHAR(7) DEFAULT ''"))
-            conn.commit()
+async def init_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async with engine.connect() as conn:
+        def _migrate(sync_conn):
+            inspector = inspect(sync_conn)
+            columns = [c["name"] for c in inspector.get_columns("tools")]
+            if "color" not in columns:
+                sync_conn.execute(text("ALTER TABLE tools ADD COLUMN color VARCHAR(7) DEFAULT ''"))
+        await conn.run_sync(_migrate)
+        await conn.commit()
 
 
-def get_session():
-    db = SessionLocal()
-    try:
+async def get_session():
+    async with AsyncSessionLocal() as db:
         yield db
-    finally:
-        db.close()

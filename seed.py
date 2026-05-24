@@ -1,4 +1,5 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from models import FareConfig, FixedPrice, Tool
 
 DEFAULT_CONFIG = {
@@ -89,23 +90,27 @@ DEFAULT_TOOLS = [
 ]
 
 
-def seed_config(db: Session):
+async def seed_config(db: AsyncSession):
     for key, (value, description) in DEFAULT_CONFIG.items():
-        existing = db.query(FareConfig).filter(FareConfig.key == key).first()
-        if not existing:
+        result = await db.execute(select(FareConfig).where(FareConfig.key == key))
+        if not result.scalars().first():
             db.add(FareConfig(key=key, value=float(value), description=description))
 
     for fp in DEFAULT_FIXED_PRICES:
         existing = None
         if fp["destination_keyword"]:
-            existing = db.query(FixedPrice).filter(
-                FixedPrice.destination_keyword == fp["destination_keyword"]
-            ).first()
+            result = await db.execute(
+                select(FixedPrice).where(FixedPrice.destination_keyword == fp["destination_keyword"])
+            )
+            existing = result.scalars().first()
         elif fp["service_type"]:
-            existing = db.query(FixedPrice).filter(
-                FixedPrice.service_type == fp["service_type"],
-                FixedPrice.destination_keyword.is_(None),
-            ).first()
+            result = await db.execute(
+                select(FixedPrice).where(
+                    FixedPrice.service_type == fp["service_type"],
+                    FixedPrice.destination_keyword.is_(None),
+                )
+            )
+            existing = result.scalars().first()
 
         if not existing:
             db.add(FixedPrice(
@@ -119,8 +124,8 @@ def seed_config(db: Session):
             ))
 
     for tool in DEFAULT_TOOLS:
-        existing = db.query(Tool).filter(Tool.key == tool["key"]).first()
-        if not existing:
+        result = await db.execute(select(Tool).where(Tool.key == tool["key"]))
+        if not result.scalars().first():
             db.add(Tool(
                 key=tool["key"],
                 label=tool["label"],
@@ -131,4 +136,4 @@ def seed_config(db: Session):
                 active=tool["active"],
             ))
 
-    db.commit()
+    await db.commit()
