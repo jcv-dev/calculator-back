@@ -1,0 +1,13 @@
+.env
+__pycache__
+*.pyc
+.venv
+venv
+.git
+database.db
+.gitignore
+README.md
+tests
+.env.example
+Procfile
+runtime.txt
