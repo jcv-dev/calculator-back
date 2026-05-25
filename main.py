@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.exceptions import RequestValidationError
@@ -10,13 +11,13 @@ from starlette.middleware.sessions import SessionMiddleware
 from dotenv import load_dotenv
 from sqlalchemy import text
 
-from database import init_db, get_session, AsyncSessionLocal
+from database import init_db, AsyncSessionLocal
 from seed import seed_config
 from models import FareConfig, FixedPrice, Tool  # noqa: ensure all models imported for create_all
 from services.cache import cache_stats
 from routes.admin import router as admin_router
 from routes.pricing import router as pricing_router
-from routes.geocode import router as geocode_router
+from routes.geocode import router as geocode_router, close_http_client
 from routes.config import router as config_router
 from routes.tools import router as tools_router
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -46,7 +47,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger("domii")
 
-app = FastAPI(title="Domii Tuluá Fare Calculator")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    async with AsyncSessionLocal() as db:
+        try:
+            await seed_config(db)
+        except Exception:
+            await db.rollback()
+            raise
+    yield
+    await close_http_client()
+
+app = FastAPI(title="Domii Tuluá Fare Calculator", lifespan=lifespan)
 
 cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
 
@@ -114,17 +127,6 @@ async def generic_handler(request: Request, exc: Exception):
         status_code=500,
         content={"error": "Internal server error"},
     )
-
-
-@app.on_event("startup")
-async def startup():
-    await init_db()
-    async with AsyncSessionLocal() as db:
-        try:
-            await seed_config(db)
-        except Exception:
-            await db.rollback()
-            raise
 
 
 @app.get("/api/health")
