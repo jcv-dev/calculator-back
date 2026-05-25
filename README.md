@@ -10,6 +10,7 @@ Fare calculation engine for Domii Tuluá. Exposes a REST API for computing deliv
 - **httpx** (async HTTP client for external APIs)
 - **python-dotenv** (environment variable loader)
 - **itsdangerous** (session cookie signing via Starlette's `SessionMiddleware`)
+- **slowapi** (IP-based rate limiting, 30 req/min default)
 
 ## External API Dependencies
 
@@ -49,6 +50,23 @@ backend/
 │   └── test_models.py
 └── requirements.txt
 ```
+
+## Security
+
+### Scanner Path Blocking
+
+Requests to non-API paths (`/.env`, `/Dockerfile`, `/.git/config`, etc.) are rejected at the middleware level with a fast `404` response — before reaching any route handler.
+
+### Rate Limiting
+
+All endpoints are rate-limited per IP via `slowapi` (default: 30 requests/minute). Configure via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RATE_LIMIT` | `30/minute` | Rate limit string (see [limits](https://limits.readthedocs.io/) format) |
+| `RATE_LIMIT_ENABLED` | `true` | Set to `false` to disable rate limiting entirely |
+
+When the limit is exceeded, the API returns `429 Too Many Requests`.
 
 ## API Endpoints
 
@@ -146,6 +164,8 @@ Edit `.env` with your values:
 | `OPENWEATHER_API_KEY` | Free key from https://openweathermap.org/ |
 | `ADMIN_PASSWORD` | Password for the admin panel |
 | `SESSION_SECRET` | Random string for cookie signing (e.g. `openssl rand -hex 32`) |
+| `RATE_LIMIT` | Rate limit string (default: `30/minute`) |
+| `RATE_LIMIT_ENABLED` | Set to `false` to disable rate limiting |
 
 ### Run
 
@@ -185,6 +205,8 @@ export OPENWEATHER_API_KEY=your_key
 export ADMIN_PASSWORD=secure_password
 export SESSION_SECRET=$(openssl rand -hex 32)
 export WHATSAPP_NUMBER=57300XXXXXXX
+export RATE_LIMIT=30/minute
+export RATE_LIMIT_ENABLED=true
 ```
 
 ### CORS Configuration
