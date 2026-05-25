@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.exceptions import RequestValidationError
@@ -10,15 +11,19 @@ from starlette.middleware.sessions import SessionMiddleware
 from dotenv import load_dotenv
 from sqlalchemy import text
 
-from database import init_db, get_session, AsyncSessionLocal
+from database import init_db, AsyncSessionLocal
 from seed import seed_config
 from models import FareConfig, FixedPrice, Tool  # noqa: ensure all models imported for create_all
 from services.cache import cache_stats
 from routes.admin import router as admin_router
 from routes.pricing import router as pricing_router
-from routes.geocode import router as geocode_router
+from routes.geocode import router as geocode_router, close_http_client
 from routes.config import router as config_router
 from routes.tools import router as tools_router
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from auth import get_session_secret
 
 load_dotenv()
@@ -42,7 +47,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger("domii")
 
-app = FastAPI(title="Domii Tuluá Fare Calculator")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    async with AsyncSessionLocal() as db:
+        try:
+            await seed_config(db)
+        except Exception:
+            await db.rollback()
+            raise
+    yield
+    await close_http_client()
+
+app = FastAPI(title="Domii Tuluá Fare Calculator", lifespan=lifespan)
 
 cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
 
@@ -61,6 +78,26 @@ app.add_middleware(
     same_site="none",
     https_only=True,
 )
+
+RATE_LIMIT = os.getenv("RATE_LIMIT", "30/minute")
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=[RATE_LIMIT],
+    enabled=os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true",
+)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+KNOWN_PREFIXES = ("/api/", "/admin/", "/docs", "/redoc", "/openapi.json")
+
+@app.middleware("http")
+async def block_scanner_paths(request: Request, call_next):
+    if not request.url.path.startswith(KNOWN_PREFIXES):
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    return await call_next(request)
+
+app.add_middleware(SlowAPIMiddleware)
 
 app.include_router(admin_router)
 app.include_router(pricing_router)
@@ -92,17 +129,6 @@ async def generic_handler(request: Request, exc: Exception):
         status_code=500,
         content={"error": "Internal server error"},
     )
-
-
-@app.on_event("startup")
-async def startup():
-    await init_db()
-    async with AsyncSessionLocal() as db:
-        try:
-            await seed_config(db)
-        except Exception:
-            await db.rollback()
-            raise
 
 
 @app.get("/api/health")

@@ -11,6 +11,11 @@ from database import Base, get_session
 from main import app
 from models import FareConfig, FixedPrice, Tool
 from seed import DEFAULT_CONFIG, DEFAULT_FIXED_PRICES, DEFAULT_TOOLS
+from fastapi import FastAPI, Request
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 
 @pytest_asyncio.fixture
@@ -60,6 +65,162 @@ class TestHealthEndpoint:
         data = resp.json()
         assert data["status"] == "ok"
         assert "cache" in data
+
+
+class TestScannerBlocker:
+    @pytest.mark.asyncio
+    async def test_blocks_dot_env(self, client):
+        resp = await client.get("/.env")
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_blocks_dockerfile(self, client):
+        resp = await client.get("/Dockerfile")
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_blocks_git_config(self, client):
+        resp = await client.get("/.git/config")
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_blocks_credentials(self, client):
+        resp = await client.get("/credentials.json")
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_blocks_root(self, client):
+        resp = await client.get("/")
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_allows_docs(self, client):
+        resp = await client.get("/docs")
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_allows_openapi(self, client):
+        resp = await client.get("/openapi.json")
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_allows_health(self, client):
+        resp = await client.get("/api/health")
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_allows_admin_check(self, client):
+        resp = await client.get("/admin/api/check")
+        assert resp.status_code == 200
+
+
+class TestRateLimiting:
+    @staticmethod
+    def _make_app(limit: str = "1/minute") -> FastAPI:
+        limiter = Limiter(
+            key_func=get_remote_address,
+            default_limits=[limit],
+        )
+        test_app = FastAPI()
+        test_app.state.limiter = limiter
+        test_app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+        test_app.add_middleware(SlowAPIMiddleware)
+
+        @test_app.get("/test")
+        @limiter.limit(limit)
+        async def test_endpoint(request: Request):
+            return {"ok": True}
+
+        return test_app
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_hit(self):
+        test_app = self._make_app("1/minute")
+        transport = ASGITransport(app=test_app)
+        async with AsyncClient(transport=transport, base_url="https://test") as c:
+            r1 = await c.get("/test")
+            assert r1.status_code == 200
+            assert r1.json() == {"ok": True}
+            r2 = await c.get("/test")
+            assert r2.status_code == 429
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_not_hit_within_window(self):
+        test_app = self._make_app("5/minute")
+        transport = ASGITransport(app=test_app)
+        async with AsyncClient(transport=transport, base_url="https://test") as c:
+            for _ in range(4):
+                r = await c.get("/test")
+                assert r.status_code == 200
+            r = await c.get("/test")
+            assert r.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_response_format(self):
+        test_app = self._make_app("1/minute")
+        transport = ASGITransport(app=test_app)
+        async with AsyncClient(transport=transport, base_url="https://test") as c:
+            await c.get("/test")
+            r = await c.get("/test")
+            assert r.status_code == 429
+            body = r.json()
+            assert "error" in body
+            assert "rate limit" in body["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_shared_across_endpoints(self):
+        limiter = Limiter(
+            key_func=get_remote_address,
+            default_limits=["1/minute"],
+        )
+        test_app = FastAPI()
+        test_app.state.limiter = limiter
+        test_app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+        test_app.add_middleware(SlowAPIMiddleware)
+
+        @test_app.get("/a")
+        @limiter.shared_limit("1/minute", scope="global")
+        async def endpoint_a(request: Request):
+            return {"ok": True}
+
+        @test_app.get("/b")
+        @limiter.shared_limit("1/minute", scope="global")
+        async def endpoint_b(request: Request):
+            return {"ok": True}
+
+        transport = ASGITransport(app=test_app)
+        async with AsyncClient(transport=transport, base_url="https://test") as c:
+            r1 = await c.get("/a")
+            assert r1.status_code == 200
+            r2 = await c.get("/b")
+            assert r2.status_code == 429
+
+    @pytest.mark.asyncio
+    async def test_rate_limiter_disabled_via_env(self):
+        os.environ["RATE_LIMIT_ENABLED"] = "false"
+        try:
+            limiter = Limiter(
+                key_func=get_remote_address,
+                default_limits=["1/minute"],
+                enabled=False,
+            )
+            test_app = FastAPI()
+            test_app.state.limiter = limiter
+            test_app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+            test_app.add_middleware(SlowAPIMiddleware)
+
+            @test_app.get("/test")
+            @limiter.limit("1/minute")
+            async def test_endpoint(request: Request):
+                return {"ok": True}
+
+            transport = ASGITransport(app=test_app)
+            async with AsyncClient(transport=transport, base_url="https://test") as c:
+                for _ in range(3):
+                    r = await c.get("/test")
+                    assert r.status_code == 200
+        finally:
+            os.environ["RATE_LIMIT_ENABLED"] = "true"
 
 
 class TestGeocodeEndpoint:

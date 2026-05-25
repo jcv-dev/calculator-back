@@ -15,8 +15,7 @@ router = APIRouter(prefix="/api/geocode")
 _http_client = httpx.AsyncClient(timeout=10.0)
 
 
-@router.on_event("shutdown")
-async def shutdown():
+async def close_http_client():
     await _http_client.aclose()
 
 
