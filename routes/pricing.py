@@ -56,7 +56,8 @@ async def resolve_coords(loc: LocationItem | None) -> tuple[float, float] | None
 @router.post("/calculate-price")
 async def calculate_price(body: PriceRequest, db: AsyncSession = Depends(get_session)):
     addresses = [s.destination.address for s in body.segments]
-    is_raining = await check_rain()
+    weather_data = await check_rain()
+    is_raining = weather_data["is_raining"]
 
     config_result = await db.execute(select(FareConfig))
     config_rows = config_result.scalars().all()
@@ -86,7 +87,14 @@ async def calculate_price(body: PriceRequest, db: AsyncSession = Depends(get_ses
                 "fixed_reason": keyword_match.description or f"Tarifa fija: {keyword_match.destination_keyword}",
             },
             "breakdown": breakdown,
-            "weather": {"is_raining": is_raining, "rain_surcharge": breakdown.get("rain_surcharge", 0)},
+            "weather": {
+                "is_raining": is_raining,
+                "rain_surcharge": breakdown.get("rain_surcharge", 0),
+                "icon": weather_data.get("icon", "01d"),
+                "description": weather_data.get("description", ""),
+                "condition_id": weather_data.get("condition_id", 0),
+                "main": weather_data.get("main", ""),
+            },
             "warnings": [],
         }
 
@@ -118,7 +126,14 @@ async def calculate_price(body: PriceRequest, db: AsyncSession = Depends(get_ses
                         "fixed_reason": proximity_match.description or f"Proximidad: destino cercano a punto de tarifa fija",
                     },
                     "breakdown": breakdown,
-                    "weather": {"is_raining": is_raining, "rain_surcharge": breakdown.get("rain_surcharge", 0)},
+                    "weather": {
+                        "is_raining": is_raining,
+                        "rain_surcharge": breakdown.get("rain_surcharge", 0),
+                        "icon": weather_data.get("icon", "01d"),
+                        "description": weather_data.get("description", ""),
+                        "condition_id": weather_data.get("condition_id", 0),
+                        "main": weather_data.get("main", ""),
+                    },
                     "warnings": [],
                 }
 
@@ -209,6 +224,13 @@ async def calculate_price(body: PriceRequest, db: AsyncSession = Depends(get_ses
             "is_fixed_route": False,
         },
         "breakdown": breakdown,
-        "weather": {"is_raining": is_raining, "rain_surcharge": breakdown.get("rain_surcharge", 0)},
+        "weather": {
+            "is_raining": is_raining,
+            "rain_surcharge": breakdown.get("rain_surcharge", 0),
+            "icon": weather_data.get("icon", "01d"),
+            "description": weather_data.get("description", ""),
+            "condition_id": weather_data.get("condition_id", 0),
+            "main": weather_data.get("main", ""),
+        },
         "warnings": [],
     }

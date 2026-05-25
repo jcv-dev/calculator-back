@@ -10,11 +10,30 @@ WEATHER_URL = "https://api.openweathermap.org/data/2.5/weather"
 TULUA_LAT = 4.0847
 TULUA_LON = -76.1954
 
+WEATHER_FALLBACK = {
+    "is_raining": False,
+    "icon": "01d",
+    "description": "",
+    "condition_id": 0,
+    "main": "",
+}
 
-async def check_rain(api_key: str | None = None) -> bool:
+FORCE_RAIN = {
+    "is_raining": True,
+    "icon": "10d",
+    "description": "lluvia ligera",
+    "condition_id": 500,
+    "main": "Rain",
+}
+
+
+async def check_rain(api_key: str | None = None) -> dict:
+    if os.getenv("FORCE_RAIN", "").lower() in ("true", "1", "yes"):
+        return dict(FORCE_RAIN)
+
     key = api_key or os.getenv("OPENWEATHER_API_KEY", "")
     if not key:
-        return False
+        return dict(WEATHER_FALLBACK)
 
     cached = cache_get("weather")
     if cached is not None:
@@ -35,15 +54,27 @@ async def check_rain(api_key: str | None = None) -> bool:
 
         weather_list = data.get("weather", [])
         if not weather_list:
-            return False
+            cache_set("weather", WEATHER_FALLBACK)
+            return dict(WEATHER_FALLBACK)
 
         w = weather_list[0]
         main_condition = w.get("main", "")
         condition_id = w.get("id", 0)
-        result = main_condition == "Rain" or str(condition_id).startswith("5")
+        icon = w.get("icon", "01d")
+        description = w.get("description", "")
+
+        is_raining = main_condition == "Rain" or str(condition_id).startswith(("2", "5"))
+
+        result = {
+            "is_raining": is_raining,
+            "icon": icon,
+            "description": description,
+            "condition_id": condition_id,
+            "main": main_condition,
+        }
         cache_set("weather", result)
         return result
     except Exception:
         pass
 
-    return False
+    return dict(WEATHER_FALLBACK)
