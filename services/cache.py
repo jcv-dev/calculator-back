@@ -8,9 +8,9 @@ logger = logging.getLogger("cache")
 CACHE_CONFIG = {
     "geocode": {"ttl": 604800, "maxsize": 500},
     "osrm": {"ttl": 2592000, "maxsize": 500},
-    "places_search": {"ttl": 3600, "maxsize": 500},
+    "places_search": {"ttl": 172800, "maxsize": 500},
     "places_details": {"ttl": 2592000, "maxsize": 500},
-    "weather": {"ttl": 900, "maxsize": 10},
+    "weather": {"ttl": 600, "maxsize": 10},
 }
 
 _caches: dict[str, TTLCache] = {}
