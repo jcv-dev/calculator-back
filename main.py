@@ -79,9 +79,11 @@ app.add_middleware(
     https_only=True,
 )
 
+RATE_LIMIT = os.getenv("RATE_LIMIT", "30/minute")
+
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["30/minute"],
+    default_limits=[RATE_LIMIT],
     enabled=os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true",
 )
 app.state.limiter = limiter
