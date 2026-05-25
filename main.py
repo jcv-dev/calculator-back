@@ -19,6 +19,10 @@ from routes.pricing import router as pricing_router
 from routes.geocode import router as geocode_router
 from routes.config import router as config_router
 from routes.tools import router as tools_router
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from auth import get_session_secret
 
 load_dotenv()
@@ -61,6 +65,24 @@ app.add_middleware(
     same_site="none",
     https_only=True,
 )
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["30/minute"],
+    enabled=os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true",
+)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+KNOWN_PREFIXES = ("/api/", "/admin/", "/docs", "/redoc", "/openapi.json")
+
+@app.middleware("http")
+async def block_scanner_paths(request: Request, call_next):
+    if not request.url.path.startswith(KNOWN_PREFIXES):
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    return await call_next(request)
+
+app.add_middleware(SlowAPIMiddleware)
 
 app.include_router(admin_router)
 app.include_router(pricing_router)
