@@ -21,8 +21,8 @@ WEATHER_FALLBACK = {
 FORCE_RAIN = {
     "is_raining": True,
     "icon": "10d",
-    "description": "lluvia ligera",
-    "condition_id": 500,
+    "description": "lluvia moderada",
+    "condition_id": 501,
     "main": "Rain",
 }
 
@@ -63,7 +63,7 @@ async def check_rain(api_key: str | None = None) -> dict:
         icon = w.get("icon", "01d")
         description = w.get("description", "")
 
-        is_raining = main_condition == "Rain" or str(condition_id).startswith(("2", "5"))
+        is_raining = main_condition == "Rain" and str(condition_id) != "500"
 
         result = {
             "is_raining": is_raining,
