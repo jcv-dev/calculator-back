@@ -1,10 +1,23 @@
+from typing import Literal
+
 from fastapi import APIRouter, Request, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from database import get_session
-from models import FareConfig, FixedPrice, Tool
-from auth import login_user, logout_user, require_admin
+from models import FareConfig, FixedPrice, Tool, ApiKey
+from auth import (
+    login_user,
+    logout_user,
+    require_admin,
+    extract_api_key,
+    get_active_api_key,
+    generate_api_key,
+    hash_api_key,
+    api_key_prefix,
+    cache_api_key,
+    uncache_api_key,
+)
 
 router = APIRouter(prefix="/admin/api")
 
@@ -62,6 +75,23 @@ class ToolUpdate(BaseModel):
     active: bool | None = None
 
 
+class ApiKeyCreate(BaseModel):
+    name: str = ""
+    privilege: Literal["normal", "admin"] = "normal"
+
+
+def _serialize_api_key(row: ApiKey) -> dict:
+    """Never expose the raw key or its hash — only the display prefix."""
+    return {
+        "id": row.id,
+        "name": row.name,
+        "prefix": row.prefix,
+        "privilege": row.privilege,
+        "active": row.active,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
 @router.post("/login")
 async def admin_login(request: Request, body: LoginRequest):
     ok = await login_user(request, body.password)
@@ -71,8 +101,17 @@ async def admin_login(request: Request, body: LoginRequest):
 
 
 @router.get("/check")
-async def admin_check(request: Request):
-    return {"authenticated": request.session.get("admin", False)}
+async def admin_check(request: Request, db: AsyncSession = Depends(get_session)):
+    if request.session.get("admin"):
+        return {"authenticated": True}
+
+    raw = extract_api_key(request)
+    if raw:
+        record = await get_active_api_key(db, raw)
+        if record and record.privilege == "admin":
+            return {"authenticated": True}
+
+    return {"authenticated": False}
 
 
 @router.post("/logout")
@@ -363,4 +402,56 @@ async def delete_tool(
         raise HTTPException(status_code=404, detail="Tool not found")
     await db.delete(tool)
     await db.commit()
+    return {"deleted": True}
+
+
+@router.get("/keys")
+async def list_api_keys(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+    _=Depends(require_admin),
+):
+    result = await db.execute(select(ApiKey).order_by(ApiKey.id.desc()))
+    return [_serialize_api_key(row) for row in result.scalars().all()]
+
+
+@router.post("/keys")
+async def create_api_key(
+    request: Request,
+    body: ApiKeyCreate,
+    db: AsyncSession = Depends(get_session),
+    _=Depends(require_admin),
+):
+    raw_key = generate_api_key()
+    row = ApiKey(
+        name=body.name,
+        key_hash=hash_api_key(raw_key),
+        prefix=api_key_prefix(raw_key),
+        privilege=body.privilege,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+
+    cache_api_key(row.key_hash, row.privilege)
+
+    # The raw key is returned exactly once, at creation time.
+    return {**_serialize_api_key(row), "key": raw_key}
+
+
+@router.delete("/keys/{key_id}")
+async def delete_api_key(
+    request: Request,
+    key_id: int,
+    db: AsyncSession = Depends(get_session),
+    _=Depends(require_admin),
+):
+    result = await db.execute(select(ApiKey).where(ApiKey.id == key_id))
+    row = result.scalars().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="API key not found")
+    key_hash = row.key_hash
+    await db.delete(row)
+    await db.commit()
+    uncache_api_key(key_hash)
     return {"deleted": True}

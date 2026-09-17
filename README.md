@@ -63,10 +63,25 @@ All endpoints are rate-limited per IP via `slowapi` (default: 30 requests/minute
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RATE_LIMIT` | `30/minute` | Rate limit string (see [limits](https://limits.readthedocs.io/) format) |
+| `RATE_LIMIT` | `30/minute` | Anonymous/IP rate limit string (see [limits](https://limits.readthedocs.io/) format) |
+| `API_KEY_RATE_LIMIT` | `120/minute` | Higher limit applied to requests with a valid API key |
 | `RATE_LIMIT_ENABLED` | `true` | Set to `false` to disable rate limiting entirely |
 
 When the limit is exceeded, the API returns `429 Too Many Requests`.
+
+### API Keys
+
+API keys let integrations call the API without a browser session and with a higher rate limit. Each key has one of two privileges:
+
+| Privilege | Access |
+|-----------|--------|
+| `normal` | Same as an anonymous caller (public `/api/*` routes) + higher rate limit |
+| `admin` | Everything a normal key can do, **plus** full access to `/admin/api/*` |
+
+- Send the key in the `X-API-Key` header, or as `Authorization: Bearer <key>`.
+- Keys are generated as `domii_<random>` and stored only as a SHA-256 hash — the raw key is returned **once**, at creation time.
+- Manage keys from the admin panel (**API Keys** tab) or via the admin API below.
+- Valid keys are cached in memory at startup and kept in sync on create/delete (single-process deployments).
 
 ## API Endpoints
 
@@ -92,6 +107,11 @@ When the limit is exceeded, the API returns `429 Too Many Requests`.
 | `POST` | `/admin/api/fixed-prices` | Create a fixed price |
 | `PUT` | `/admin/api/fixed-prices/{id}` | Update a fixed price |
 | `DELETE` | `/admin/api/fixed-prices/{id}` | Delete a fixed price |
+| `GET` | `/admin/api/keys` | List API keys (metadata only) |
+| `POST` | `/admin/api/keys` | Create an API key (returns the raw key once) |
+| `DELETE` | `/admin/api/keys/{id}` | Delete an API key |
+
+All admin endpoints also accept an API key with `admin` privilege (via `X-API-Key` or `Authorization: Bearer`).
 
 ## Database Schema
 
@@ -126,6 +146,18 @@ When the limit is exceeded, the API returns `429 Too Many Requests`.
 | `description` | Text | Human-readable |
 
 At least one of `service_type`/`destination_keyword` must be non-null. When a keyword matches any segment's address, the entire request is priced at that fixed price (bypasses distance calc and all modifiers). When a service_type matches a segment with no coords, only that segment is priced at the fixed price.
+
+### `api_keys` table
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | Integer (PK) | Auto-increment |
+| `name` | String(100) | Human-readable label |
+| `key_hash` | String(64), UNIQUE | SHA-256 hash of the raw key (raw key is never stored) |
+| `prefix` | String(16) | First characters of the key, shown in the admin list |
+| `privilege` | String(10) | `normal` or `admin` |
+| `active` | Boolean | Inactive keys are rejected |
+| `created_at` | DateTime | Creation timestamp (UTC) |
 
 ## Calculation Logic
 
@@ -164,7 +196,8 @@ Edit `.env` with your values:
 | `OPENWEATHER_API_KEY` | Free key from https://openweathermap.org/ |
 | `ADMIN_PASSWORD` | Password for the admin panel |
 | `SESSION_SECRET` | Random string for cookie signing (e.g. `openssl rand -hex 32`) |
-| `RATE_LIMIT` | Rate limit string (default: `30/minute`) |
+| `RATE_LIMIT` | Anonymous/IP rate limit string (default: `30/minute`) |
+| `API_KEY_RATE_LIMIT` | Rate limit for valid API keys (default: `120/minute`) |
 | `RATE_LIMIT_ENABLED` | Set to `false` to disable rate limiting |
 
 ### Run
@@ -206,6 +239,7 @@ export ADMIN_PASSWORD=secure_password
 export SESSION_SECRET=$(openssl rand -hex 32)
 export WHATSAPP_NUMBER=57300XXXXXXX
 export RATE_LIMIT=30/minute
+export API_KEY_RATE_LIMIT=120/minute
 export RATE_LIMIT_ENABLED=true
 ```
 

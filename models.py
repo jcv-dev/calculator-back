@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, Float, String, Text, Boolean, CheckConstraint
+from datetime import datetime, timezone
+from sqlalchemy import Column, Integer, Float, String, Text, Boolean, CheckConstraint, DateTime
 from database import Base
 
 
@@ -28,6 +29,22 @@ class FixedPrice(Base):
             "service_type IS NOT NULL OR destination_keyword IS NOT NULL OR (lat IS NOT NULL AND lng IS NOT NULL)",
             name="ck_fixed_price_has_target",
         ),
+    )
+
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False, default="")
+    key_hash = Column(String(64), unique=True, nullable=False, index=True)
+    prefix = Column(String(16), nullable=False, default="")
+    privilege = Column(String(10), nullable=False, default="normal")
+    active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        CheckConstraint("privilege IN ('normal', 'admin')", name="ck_api_key_privilege"),
     )
 
 

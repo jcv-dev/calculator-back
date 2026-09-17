@@ -13,7 +13,7 @@ from sqlalchemy import text
 
 from database import init_db, AsyncSessionLocal
 from seed import seed_config
-from models import FareConfig, FixedPrice, Tool  # noqa: ensure all models imported for create_all
+from models import FareConfig, FixedPrice, Tool, ApiKey  # noqa: ensure all models imported for create_all
 from services.cache import cache_stats
 from routes.admin import router as admin_router
 from routes.pricing import router as pricing_router
@@ -21,10 +21,10 @@ from routes.geocode import router as geocode_router, close_http_client
 from routes.config import router as config_router
 from routes.tools import router as tools_router
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from auth import get_session_secret
+from auth import get_session_secret, refresh_api_key_cache
+from rate_limit import rate_limit_provider, rate_limit_key_func, ApiKeyTierMiddleware
 
 load_dotenv()
 
@@ -53,6 +53,7 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         try:
             await seed_config(db)
+            await refresh_api_key_cache(db)
         except Exception:
             await db.rollback()
             raise
@@ -79,11 +80,9 @@ app.add_middleware(
     https_only=True,
 )
 
-RATE_LIMIT = os.getenv("RATE_LIMIT", "30/minute")
-
 limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=[RATE_LIMIT],
+    key_func=rate_limit_key_func,
+    default_limits=[rate_limit_provider],
     enabled=os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true",
 )
 app.state.limiter = limiter
@@ -98,6 +97,9 @@ async def block_scanner_paths(request: Request, call_next):
     return await call_next(request)
 
 app.add_middleware(SlowAPIMiddleware)
+# Added last so it runs outermost and sets the rate-limit tier before slowapi
+# evaluates the default limits.
+app.add_middleware(ApiKeyTierMiddleware)
 
 app.include_router(admin_router)
 app.include_router(pricing_router)

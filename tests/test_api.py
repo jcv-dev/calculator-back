@@ -26,18 +26,21 @@ async def db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    async with TestingSession() as session:
-        for key, (value, description) in DEFAULT_CONFIG.items():
-            session.add(FareConfig(key=key, value=float(value), description=description))
-        for fp in DEFAULT_FIXED_PRICES:
-            session.add(FixedPrice(
-                service_type=fp["service_type"],
-                destination_keyword=fp["destination_keyword"],
-                price=float(fp["price"]),
-                description=fp["description"],
-            ))
-        await session.commit()
-        yield session
+    try:
+        async with TestingSession() as session:
+            for key, (value, description) in DEFAULT_CONFIG.items():
+                session.add(FareConfig(key=key, value=float(value), description=description))
+            for fp in DEFAULT_FIXED_PRICES:
+                session.add(FixedPrice(
+                    service_type=fp["service_type"],
+                    destination_keyword=fp["destination_keyword"],
+                    price=float(fp["price"]),
+                    description=fp["description"],
+                ))
+            await session.commit()
+            yield session
+    finally:
+        await engine.dispose()
 
 
 @pytest_asyncio.fixture
