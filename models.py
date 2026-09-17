@@ -3,6 +3,15 @@ from sqlalchemy import Column, Integer, Float, String, Text, Boolean, CheckConst
 from database import Base
 
 
+def utcnow() -> datetime:
+    """Naive UTC timestamp.
+
+    SQLAlchemy maps plain ``DateTime`` to PostgreSQL ``TIMESTAMP WITHOUT TIME
+    ZONE``; passing a timezone-aware value there is rejected by asyncpg.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 class FareConfig(Base):
     __tablename__ = "fares_config"
 
@@ -41,7 +50,7 @@ class ApiKey(Base):
     prefix = Column(String(16), nullable=False, default="")
     privilege = Column(String(10), nullable=False, default="normal")
     active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, nullable=False, default=utcnow)
 
     __table_args__ = (
         CheckConstraint("privilege IN ('normal', 'admin')", name="ck_api_key_privilege"),

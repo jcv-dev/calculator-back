@@ -137,6 +137,9 @@ class TestApiKeyModel:
         assert row.privilege == "admin"
         assert row.active is True
         assert row.created_at is not None
+        # Must be naive UTC: PostgreSQL TIMESTAMP WITHOUT TIME ZONE rejects aware
+        # datetimes from asyncpg.
+        assert row.created_at.tzinfo is None
 
     @pytest.mark.asyncio
     async def test_key_hash_is_unique(self, db):
@@ -182,6 +185,8 @@ class TestApiKeyAdminCrud:
         assert data["privilege"] == "normal"
         assert data["prefix"] == api_key_prefix(raw)
         assert data["active"] is True
+        # Stored as naive UTC, but serialized with an explicit UTC offset.
+        assert data["created_at"].endswith("+00:00")
 
         result = await db.execute(select(ApiKey))
         stored = result.scalars().all()

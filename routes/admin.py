@@ -1,3 +1,4 @@
+from datetime import timezone
 from typing import Literal
 
 from fastapi import APIRouter, Request, Depends, HTTPException
@@ -80,6 +81,15 @@ class ApiKeyCreate(BaseModel):
     privilege: Literal["normal", "admin"] = "normal"
 
 
+def _iso_utc(value):
+    """Serialize a stored naive-UTC datetime with an explicit UTC offset."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.isoformat()
+
+
 def _serialize_api_key(row: ApiKey) -> dict:
     """Never expose the raw key or its hash — only the display prefix."""
     return {
@@ -88,7 +98,7 @@ def _serialize_api_key(row: ApiKey) -> dict:
         "prefix": row.prefix,
         "privilege": row.privilege,
         "active": row.active,
-        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "created_at": _iso_utc(row.created_at),
     }
 
 
